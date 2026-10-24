@@ -1,0 +1,53 @@
+// Copy to terraform.tfvars and edit before running `make plan`.
+// Never put AK/SK here - use HW_ACCESS_KEY / HW_SECRET_KEY.
+
+site_type    = "domestic"
+region       = "cn-north-4"
+project_name = "litellm"
+environment  = "prod"
+
+// Empty az_list = first three AZs returned by the API. Pin them when you need
+// a specific pair for RDS/ELB.
+// az_list = ["cn-north-4a", "cn-north-4b", "cn-north-4c"]
+
+litellm_version = "1.106.3"
+// After scripts/mirror-image.sh, point this at SWR for China regions:
+// litellm_image_repository = "swr.cn-north-4.myhuaweicloud.com/my-org/litellm"
+
+rds_pg_version      = "16"
+dcs_redis_version   = "7.0"
+cce_cluster_version = "v1.31"
+
+// Flavor codes verified in cn-north-4. Re-check when changing region.
+cce_cluster_flavor = "cce.s2.small"
+cce_node_flavor    = "c7.xlarge.4"
+rds_flavor         = "rds.pg.n1.xlarge.2.ha"
+dcs_flavor         = "redis.ha.xu1.large.r2.2"
+dcs_capacity       = 2
+
+// Restrict the gateway to your egress range. 0.0.0.0/0 is only acceptable
+// together with TLS.
+elb_ingress_cidrs = ["203.0.113.0/24"]
+ssh_ingress_cidrs = []
+
+// TLS: upload a certificate in SCM/ELB, paste its ID, then set enable_https.
+enable_https   = false
+certificate_id = ""
+
+charging_mode = "postPaid"
+// period      = 1
+// period_unit = "month"
+
+encryption_enabled = true
+vpn_enabled        = false
+// customer_gateway_ip  = "198.51.100.10"
+
+vpce_enabled = false
+// modelarts_vpce_service_id = "..."
+
+alarm_email   = ""
+enable_alarms = false
+
+tags = {
+  owner = "platform-team"
+}

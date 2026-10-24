@@ -1,0 +1,27 @@
+// Copy to terraform.tfvars and edit.
+// This tier is for evaluation only: plain HTTP, secrets in user_data, local
+// PostgreSQL and Redis containers. Use examples/cce-ha for production.
+
+region       = "cn-north-4"
+project_name = "litellm"
+environment  = "dev"
+
+// Empty availability_zone = first AZ returned by the API.
+// availability_zone = "cn-north-4a"
+
+image_name = "Ubuntu 24.04 server 64bit"
+flavor_id  = "c7.xlarge.4"
+
+allowed_ingress_cidrs = ["203.0.113.0/24"]
+ssh_ingress_cidrs     = []
+// key_pair            = "my-keypair"
+
+litellm_version = "1.106.3"
+
+// Sample provider wiring. Leave empty if you only want to browse the Admin UI.
+// modelarts_api_base = "https://<maas-endpoint>/v1"
+// modelarts_api_key  = "..."
+
+tags = {
+  owner = "platform-team"
+}

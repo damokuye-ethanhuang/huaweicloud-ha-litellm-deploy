@@ -1,0 +1,26 @@
+// Optional remote state on OBS (S3 compatible).
+//
+// 1. Create a bucket with server-side encryption enabled.
+// 2. Rename this file to backend.tf in the example directory.
+// 3. terraform init -migrate-state
+//
+// The state contains the generated passwords and the kubeconfig, so the bucket
+// must be private and encrypted, and access must be limited to the deployer.
+
+terraform {
+  backend "s3" {
+    bucket = "my-terraform-state-bucket"
+    key    = "litellm/prod/terraform.tfstate"
+    region = "cn-north-4"
+
+    endpoints = {
+      s3 = "https://obs.cn-north-4.myhuaweicloud.com"
+    }
+
+    use_path_style              = true
+    skip_region_validation      = true
+    skip_credentials_validation = true
+    skip_requesting_account_id  = true
+    skip_s3_checksum            = true
+  }
+}

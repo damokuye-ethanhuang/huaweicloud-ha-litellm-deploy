@@ -1,0 +1,135 @@
+# Default values for the LiteLLM gateway chart.
+#
+# The chart never creates the application Secret: create it from CSMS before
+# installing (see scripts/deploy-app.sh). Keeping credentials out of Helm
+# values keeps them out of release metadata and CI logs.
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/berriai/litellm
+  # Pin an exact release. Never use latest or main-stable.
+  tag: "1.106.3"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Required. Must contain: DATABASE_URL, LITELLM_MASTER_KEY, LITELLM_SALT_KEY,
+# REDIS_PASSWORD. scripts/deploy-app.sh creates it from the Terraform outputs.
+existingSecret: ""
+
+# Config file mounted at /app/config/config.yaml. The file is synced from
+# config/litellm-config.yaml by `make sync-config`.
+config:
+  # Use an existing ConfigMap instead of the one shipped with the chart.
+  existingConfigMap: ""
+
+# Non-secret environment variables. Secrets come from existingSecret.
+env:
+  STORE_MODEL_IN_DB: "True"
+  DISABLE_SCHEMA_UPDATE: "true"
+  REDIS_HOST: "127.0.0.1"
+  REDIS_PORT: "6379"
+  REDIS_SSL: "false"
+
+# Extra args appended to the container command. One Uvicorn worker per pod:
+# scale with replicas, not workers (LiteLLM production guidance).
+extraArgs:
+  - "--num_workers"
+  - "1"
+
+service:
+  type: LoadBalancer
+  port: 443
+  targetPort: http
+  # CCE annotations are rendered by scripts/deploy-app.sh, for example:
+  #   kubernetes.io/elb.id: <elb id>
+  #   kubernetes.io/elb.class: performance
+  #   kubernetes.io/elb.protocol-port: https:443
+  #   kubernetes.io/elb.cert-id: <certificate id>
+  annotations: {}
+  sessionAffinity: None
+
+resources:
+  # LiteLLM guidance: 1 vCPU and 4Gi per worker, requests == limits.
+  requests:
+    cpu: "1"
+    memory: 4Gi
+  limits:
+    cpu: "1"
+    memory: 4Gi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 60
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+
+# Runs schema migrations and spend-log indexing before the rollout.
+# The gateway pods keep DISABLE_SCHEMA_UPDATE=true.
+migration:
+  enabled: true
+  activeDeadlineSeconds: 1800
+  backoffLimit: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+probes:
+  startup:
+    periodSeconds: 10
+    failureThreshold: 30
+  liveness:
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+terminationGracePeriodSeconds: 90
+
+# Give kube-proxy and the CCE ELB time to stop sending new connections before
+# the process receives SIGTERM.
+preStopSleepSeconds: 10
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}
+podLabels: {}
+
+# The official image runs as root. Switch to the litellm-non_root image and set
+# this to 1000 to run unprivileged.
+runAsNonRoot: false
+runAsUser: null
+fsGroup: null

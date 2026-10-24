@@ -1,0 +1,9 @@
+# Files ignored when packaging the chart with `helm package`.
+.DS_Store
+.git/
+.gitignore
+.gitattributes
+*.tmpl
+ci/
+tests/
+README.md

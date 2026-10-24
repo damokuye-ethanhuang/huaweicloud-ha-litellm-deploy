@@ -1,0 +1,16 @@
+apiVersion: v2
+name: litellm
+description: LiteLLM AI gateway with production defaults for Huawei Cloud CCE
+type: application
+version: 0.1.0
+appVersion: "1.106.3"
+kubeVersion: ">=1.28.0-0"
+keywords:
+  - litellm
+  - llm-gateway
+  - openai-proxy
+  - huaweicloud
+sources:
+  - https://github.com/BerriAI/litellm
+annotations:
+  category: AI

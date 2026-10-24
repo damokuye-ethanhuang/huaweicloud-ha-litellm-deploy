@@ -1,0 +1,20 @@
+{{ include "litellm.fullname" . }} has been installed.
+
+Gateway endpoint
+{{- if eq .Values.service.type "LoadBalancer" }}
+  https://<load-balancer-public-ip>  (TLS terminates at the ELB)
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "litellm.fullname" . }} 4000:{{ .Values.service.port }}
+{{- end }}
+
+First checks
+  1. kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  2. kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/component=migration --tail=50
+  3. curl -s https://<endpoint>/health/readiness
+  4. curl -s https://<endpoint>/v1/models -H "Authorization: Bearer $LITELLM_MASTER_KEY"
+
+The master key lives in CSMS:
+  terraform output -json app_env | jq -r .LITELLM_MASTER_KEY
+
+Reminder: LITELLM_SALT_KEY must never be rotated after provider credentials are
+stored in the database.

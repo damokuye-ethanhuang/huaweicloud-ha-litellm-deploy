@@ -1,0 +1,47 @@
+{{- if .Values.migration.enabled }}
+{{/*
+Schema migrations and spend-log indexing must finish before the new gateway
+pods roll out. The pre-install/pre-upgrade hook runs against the target image
+with DISABLE_SCHEMA_UPDATE=false; the Deployment keeps it true.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "litellm.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "litellm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "litellm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "litellm.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "litellm.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--skip_server_startup"
+          envFrom:
+            - secretRef:
+                name: {{ include "litellm.secretName" . }}
+          env:
+            - name: DISABLE_SCHEMA_UPDATE
+              value: "false"
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+{{- end }}
