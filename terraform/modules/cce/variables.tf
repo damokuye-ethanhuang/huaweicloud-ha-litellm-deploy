@@ -1,6 +1,12 @@
 variable "name_prefix" {
-  description = "Prefix applied to resource names."
+  description = "Deprecated: kept for compatibility. Names come from `names`, see the naming module."
   type        = string
+  default     = ""
+}
+
+variable "names" {
+  description = "Name map from terraform/modules/naming. Selectors: cce, cce_pool"
+  type        = map(string)
 }
 
 variable "vpc_id" {
@@ -20,14 +26,37 @@ variable "eni_subnet_ids" {
 }
 
 variable "container_network_type" {
-  description = "Container network type: overlay_l2 (VXLAN, no extra subnets) or eni (CCE Turbo, pods get VPC IPs)."
+  description = "Container network type: vpc-router (ipvlan, VPC routes), overlay_l2 (VXLAN) or eni (CCE Turbo)."
   type        = string
-  default     = "overlay_l2"
+  default     = "vpc-router"
 
   validation {
-    condition     = contains(["overlay_l2", "eni"], var.container_network_type)
-    error_message = "container_network_type must be overlay_l2 or eni."
+    condition     = contains(["vpc-router", "overlay_l2", "eni"], var.container_network_type)
+    error_message = "container_network_type must be vpc-router, overlay_l2 or eni."
   }
+}
+
+variable "charging_mode" {
+  description = "postPaid or prePaid for the cluster and its nodes."
+  type        = string
+  default     = "postPaid"
+
+  validation {
+    condition     = contains(["postPaid", "prePaid"], var.charging_mode)
+    error_message = "charging_mode must be postPaid or prePaid."
+  }
+}
+
+variable "period" {
+  description = "Billing period when prePaid."
+  type        = number
+  default     = 1
+}
+
+variable "period_unit" {
+  description = "month or year when prePaid."
+  type        = string
+  default     = "month"
 }
 
 variable "container_network_cidr" {

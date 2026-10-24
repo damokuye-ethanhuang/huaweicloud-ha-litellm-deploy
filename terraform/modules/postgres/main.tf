@@ -11,7 +11,7 @@ locals {
 }
 
 resource "huaweicloud_rds_instance" "this" {
-  name                  = "${var.name_prefix}-pg"
+  name                  = var.names["rds"]
   flavor                = var.flavor
   ha_replication_mode   = var.ha_replication_mode
   vpc_id                = var.vpc_id

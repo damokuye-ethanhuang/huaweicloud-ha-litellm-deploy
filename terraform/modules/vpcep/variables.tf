@@ -1,6 +1,12 @@
 variable "name_prefix" {
-  description = "Prefix used in the endpoint description."
+  description = "Deprecated: kept for compatibility. Names come from `names`, see the naming module."
   type        = string
+  default     = ""
+}
+
+variable "names" {
+  description = "Name map from terraform/modules/naming. Selectors: vpce"
+  type        = map(string)
 }
 
 variable "service_id" {

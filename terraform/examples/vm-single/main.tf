@@ -63,12 +63,60 @@ REDIS_PASSWORD=${random_password.redis.result}
 REDIS_SSL=false
 STORE_MODEL_IN_DB=True
 DISABLE_SCHEMA_UPDATE=false
-MODELARTS_API_BASE=${var.modelarts_api_base}
-MODELARTS_API_KEY=${var.modelarts_api_key}
-OPENAI_API_KEY=${var.openai_api_key}
+GLM_API_KEY=${var.glm_api_key}
+DEEPSEEK_API_KEY=${var.deepseek_api_key}
 EOT
 
-  config = file("${path.module}/../../../config/litellm-config.yaml")
+  # The single-VM tier renders its own config: the static settings plus the two
+  # preset models, as ONE YAML document (LiteLLM reads only the first document,
+  # verified against 1.106.3).
+  config = <<-YAML
+model_list:
+  - model_name: glm-5.3
+    litellm_params:
+      model: openai/glm-5.3
+      api_key: os.environ/GLM_API_KEY
+      api_base: ${var.model_base_url}
+      timeout: 1500
+      stream_timeout: 1500
+      max_parallel_requests: 400
+    model_info:
+      mode: chat
+  - model_name: deepseek-v4.1-flash
+    litellm_params:
+      model: openai/deepseek-v4.1-flash
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: ${var.model_base_url}
+      timeout: 1500
+      stream_timeout: 1500
+      max_parallel_requests: 400
+    model_info:
+      mode: chat
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  timeout: 1500
+  stream_timeout: 1500
+  allowed_fails: 2
+  cooldown_time: 60
+  fallbacks:
+    "glm-5.3":
+      - "deepseek-v4.1-flash"
+
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  proxy_batch_write_at: 60
+  database_connection_pool_limit: 10
+  global_max_parallel_requests: 400
+  trusted_proxy_ranges:
+    - 10.0.0.0/8
+YAML
 
   start_script = file("${path.module}/templates/start.sh")
 

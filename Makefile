@@ -6,7 +6,7 @@ NAMESPACE ?= litellm
 .DEFAULT_GOAL := help
 
 .PHONY: help bootstrap init plan apply app-deploy smoke migrate mirror fmt validate lint \
-	sync-config check-config-sync destroy package-chart
+	destroy package-chart
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -42,12 +42,6 @@ validate: ## Offline validation of every module, chart and script
 	./scripts/lint.sh
 
 lint: validate ## Alias for validate
-
-sync-config: ## Copy config/litellm-config.yaml into the chart
-	cp config/litellm-config.yaml charts/litellm/files/litellm-config.yaml
-
-check-config-sync: ## Fail if the chart config drifted
-	./scripts/check-config-sync.sh
 
 destroy: ## Destroy TF_DIR (requires CONFIRM=yes)
 	CONFIRM=yes ./scripts/destroy.sh $(TF_DIR)

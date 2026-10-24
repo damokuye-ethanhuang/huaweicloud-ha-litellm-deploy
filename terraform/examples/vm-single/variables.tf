@@ -82,21 +82,21 @@ variable "key_pair" {
   default     = ""
 }
 
-variable "modelarts_api_base" {
-  description = "OpenAI-compatible base URL of the ModelArts/MaaS endpoint. Empty disables the sample model."
+variable "model_base_url" {
+  description = "OpenAI-compatible base URL both preset models talk to (placeholder default; replace before use)."
   type        = string
-  default     = ""
+  default     = "http://127.0.0.1:9/v1"
 }
 
-variable "modelarts_api_key" {
-  description = "API key for the ModelArts/MaaS endpoint."
+variable "glm_api_key" {
+  description = "API key for glm-5.3. Leave empty when the endpoint does not authenticate."
   type        = string
   default     = "sk-not-configured"
   sensitive   = true
 }
 
-variable "openai_api_key" {
-  description = "Optional OpenAI key for the sample provider."
+variable "deepseek_api_key" {
+  description = "API key for deepseek-v4.1-flash. Leave empty when the endpoint does not authenticate."
   type        = string
   default     = "sk-not-configured"
   sensitive   = true

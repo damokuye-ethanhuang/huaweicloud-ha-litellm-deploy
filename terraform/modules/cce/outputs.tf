@@ -24,7 +24,12 @@ output "node_security_group_id" {
   value       = huaweicloud_cce_cluster.this.security_group_id
 }
 
-output "node_pool_ids" {
-  description = "Node pool IDs by availability zone key."
-  value       = { for key, pool in huaweicloud_cce_node_pool.this : key => pool.id }
+output "node_ids" {
+  description = "Worker node IDs, in creation order (round-robin across AZs)."
+  value       = huaweicloud_cce_node.workers[*].id
+}
+
+output "node_count" {
+  description = "Total worker nodes."
+  value       = length(huaweicloud_cce_node.workers)
 }

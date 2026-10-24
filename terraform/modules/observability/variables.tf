@@ -1,12 +1,24 @@
 variable "name_prefix" {
-  description = "Prefix applied to resource names."
+  description = "Deprecated: kept for compatibility. Names come from `names`, see the naming module."
   type        = string
+  default     = ""
+}
+
+variable "names" {
+  description = "Name map from terraform/modules/naming. Selectors: lts_group, lts_elb, lts_app, smn, aom"
+  type        = map(string)
 }
 
 variable "enable_lts" {
   description = "Create an LTS log group and stream for load balancer access logs."
   type        = bool
   default     = true
+}
+
+variable "stream_names" {
+  description = "LTS stream names, keyed elb/app. Defaults derive from the log group name."
+  type        = map(string)
+  default     = {}
 }
 
 variable "log_retention_days" {

@@ -1,6 +1,12 @@
 variable "name_prefix" {
-  description = "Prefix applied to resource names."
+  description = "Deprecated: kept for compatibility. Names come from `names`, see the naming module."
   type        = string
+  default     = ""
+}
+
+variable "names" {
+  description = "Name map from terraform/modules/naming. Selectors: dcs"
+  type        = map(string)
 }
 
 variable "vpc_id" {

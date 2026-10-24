@@ -27,35 +27,36 @@ locals {
 resource "huaweicloud_elb_certificate" "this" {
   count = local.upload_certificate ? 1 : 0
 
-  name        = "${var.name_prefix}-cert"
+  name        = var.names["cert"]
   certificate = var.certificate_pem
   private_key = var.private_key_pem
   description = "TLS certificate for the LiteLLM gateway"
 }
 
 resource "huaweicloud_vpc_eip" "this" {
+  count = var.internal ? 0 : 1
+
   publicip {
     type = "5_bgp"
   }
 
   bandwidth {
-    name        = "${var.name_prefix}-elb-eip"
+    name        = var.names["eip"]
     size        = var.eip_bandwidth_size
     share_type  = "PER"
     charge_mode = var.eip_charge_mode
   }
 
-  enterprise_project_id = var.enterprise_project_id
-  tags                  = local.tags
+  tags = local.tags
 }
 
 resource "huaweicloud_elb_loadbalancer" "this" {
-  name                       = "${var.name_prefix}-elb"
+  name                       = var.names["elb"]
   vpc_id                     = var.vpc_id
   ipv4_subnet_id             = var.subnet_id
   availability_zone          = var.availability_zones
   l7_flavor_id               = local.l7_flavor_id
-  ipv4_eip_id                = huaweicloud_vpc_eip.this.id
+  ipv4_eip_id                = var.internal ? null : huaweicloud_vpc_eip.this[0].id
   charging_mode              = var.charging_mode
   deletion_protection_enable = var.deletion_protection
   enterprise_project_id      = var.enterprise_project_id

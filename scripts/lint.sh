@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline validation: formatting, module validation, chart lint, config sync.
+# Offline validation: formatting, module validation, chart lint, script lint.
 # Runs in CI without any cloud credentials.
 set -euo pipefail
 
@@ -31,9 +31,6 @@ helm lint charts/litellm --set existingSecret=ci-secret || fail=1
 
 step "helm template"
 helm template litellm charts/litellm --namespace litellm --set existingSecret=ci-secret >/dev/null || fail=1
-
-step "config sync"
-./scripts/check-config-sync.sh || fail=1
 
 if command -v shellcheck >/dev/null 2>&1; then
   step "shellcheck"

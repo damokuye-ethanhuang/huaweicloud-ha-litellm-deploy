@@ -1,16 +1,16 @@
 output "gateway_url" {
-  description = "Public endpoint of the LiteLLM gateway."
-  value       = var.enable_https ? "https://${module.elb.public_ip}" : "http://${module.elb.public_ip}"
+  description = "Private endpoint of the LiteLLM gateway, reachable from the VPC and connected networks only."
+  value       = var.enable_https ? "https://${module.elb.private_ip}" : "http://${module.elb.private_ip}"
+}
+
+output "gateway_private_ip" {
+  description = "Private VIP of the internal load balancer. Point your internal DNS at this address."
+  value       = module.elb.private_ip
 }
 
 output "litellm_image" {
   description = "Container image reference used by the Helm release."
   value       = "${var.litellm_image_repository}:${var.litellm_version}"
-}
-
-output "elb_public_ip" {
-  description = "Public IP of the gateway load balancer."
-  value       = module.elb.public_ip
 }
 
 output "loadbalancer_id" {
@@ -21,6 +21,34 @@ output "loadbalancer_id" {
 output "certificate_id" {
   description = "Certificate ID referenced by the HTTPS listener. Empty when TLS is disabled."
   value       = module.elb.certificate_id
+}
+
+output "resource_names" {
+  description = "Every generated resource name, keyed by component."
+  value       = module.naming.all
+}
+
+output "bastion" {
+  description = "Operator bastion (the only public IP in the stack)."
+  value = var.bastion_enabled ? {
+    instance_id = module.bastion[0].instance_id
+    public_ip   = module.bastion[0].public_ip
+    private_ip  = module.bastion[0].private_ip
+    ssh         = module.bastion[0].ssh_command
+    secret_name = huaweicloud_csms_secret.bastion[0].name
+  } : null
+}
+
+output "cce_nodes" {
+  description = "Worker node layout: one node pool per AZ."
+  value = {
+    nodes_per_az = var.cce_node_count_per_az
+    az_count     = length(local.azs)
+    total_nodes  = var.cce_node_count_per_az * length(local.azs)
+    flavor       = var.cce_node_flavor
+    masters      = length(local.azs) >= 3 ? 3 : 1
+    azs          = local.azs
+  }
 }
 
 output "cluster_id" {
@@ -82,23 +110,39 @@ output "secret_names" {
     salt_key       = huaweicloud_csms_secret.salt_key.name
     db_password    = huaweicloud_csms_secret.database.name
     redis_password = huaweicloud_csms_secret.redis.name
+    grafana_admin  = var.metric_backend == "aom" ? huaweicloud_csms_secret.grafana[0].name : null
   }
 }
 
-output "lts_log_group_id" {
-  description = "LTS log group receiving ELB access logs."
-  value       = module.observability.log_group_id
+output "encryption" {
+  description = "Which encryption branch is active and the key in use."
+  value = {
+    mode   = var.encryption_mode
+    key_id = local.kms_key_id
+  }
 }
 
-output "vpn_public_ips" {
-  description = "Active/active public IPs of the VPN gateway when enabled."
-  value = var.vpn_enabled ? {
-    eip1 = try(module.vpn[0].eip1, null)
-    eip2 = try(module.vpn[0].eip2, null)
-  } : {}
+output "observability" {
+  description = "Where logs and metrics are stored."
+  value = {
+    lts_log_group_id  = module.observability.log_group_id
+    lts_log_stream_id = module.observability.log_stream_id
+    aom_instance_name = var.metric_backend == "aom" ? local.names["aom"] : null
+    aom_query_url     = var.metric_backend == "aom" ? try(huaweicloud_aom_prom_instance.this[0].prom_http_api_endpoint, null) : null
+    aom_retention     = var.metric_backend == "aom" ? var.aom_retention : null
+  }
 }
 
 output "modelarts_endpoint" {
   description = "Private endpoint IP for ModelArts inference when the VPC endpoint is enabled."
   value       = var.vpce_enabled ? try(module.vpcep[0].ip_address, null) : null
+}
+
+output "vpn" {
+  description = "VPN gateway details when enabled."
+  value = var.vpn_enabled ? {
+    gateway_id = try(module.vpn[0].gateway_id, null)
+    eip1       = try(module.vpn[0].eip1, null)
+    eip2       = try(module.vpn[0].eip2, null)
+  } : {}
 }

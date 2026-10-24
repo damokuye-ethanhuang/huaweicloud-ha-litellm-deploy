@@ -10,12 +10,14 @@ locals {
   alarms = { for alarm in var.alarms : alarm.name => alarm }
 
   notification_list = var.enable_smn ? [huaweicloud_smn_topic.this[0].topic_urn] : []
+
+  elb_stream_name = lookup(var.stream_names, "elb", "${var.names["lts_group"]}-elb-access")
 }
 
 resource "huaweicloud_lts_group" "this" {
   count = var.enable_lts ? 1 : 0
 
-  group_name            = "${var.name_prefix}-logs"
+  group_name            = var.names["lts_group"]
   ttl_in_days           = var.log_retention_days
   enterprise_project_id = var.enterprise_project_id
   tags                  = local.tags
@@ -25,7 +27,7 @@ resource "huaweicloud_lts_stream" "elb" {
   count = var.enable_lts ? 1 : 0
 
   group_id              = huaweicloud_lts_group.this[0].id
-  stream_name           = "${var.name_prefix}-elb-access"
+  stream_name           = local.elb_stream_name
   enterprise_project_id = var.enterprise_project_id
   tags                  = local.tags
 }
@@ -33,7 +35,7 @@ resource "huaweicloud_lts_stream" "elb" {
 resource "huaweicloud_smn_topic" "this" {
   count = var.enable_smn ? 1 : 0
 
-  name         = "${var.name_prefix}-alarms"
+  name         = var.names["smn"]
   display_name = "LiteLLM gateway alarms"
 
   tags = local.tags

@@ -1,0 +1,35 @@
+# Version presets / 版本预设
+#
+# `preset` is the version this repository is validated against. `min` and `max`
+# bound the versions you may deploy without running the upgrade procedure.
+#
+# Rule enforced by scripts/preflight.py:
+#   version <= preset                       -> 正常部署 (normal deploy)
+#   preset < version <= max_compatible      -> 允许，但必须按 upgrade procedure
+#                                              (docs/upgrade-procedure.md) 先做
+#                                              plan + 迁移演练，preflight 会提示并
+#                                              要求 ACK_UPGRADE=1
+#   version > max_compatible                -> 阻断，必须先更新本文件并重跑
+#                                              兼容性验证（方案更新流程）
+#
+# 修改这里的任何字段都属于“方案更新”，需要在 PR 里附上验证记录：
+#   - 目标版本在 LiteLLM release notes 中的 breaking changes / migrations
+#   - 在还原库上跑过迁移的耗时
+#   - /health/readiness 与一次真实推理成功
+
+litellm:
+  preset: "1.106.3"          # baseline validated by this repo
+  min_supported: "1.100.0"   # oldest version the chart/scripts are known to work with
+  max_compatible: "1.106.9"  # highest version allowed without a repo update
+  upgrade_guide: docs/upgrade-procedure.md
+  notes: |
+    preset 与 README/CHANGELOG 中的版本基线一致。1.106.x 系列共享同一套
+    Prisma 迁移与请求日志索引逻辑；跨次版本升级（如 1.106 -> 1.107）前必须
+    阅读 release notes 并按升级流程演练。
+
+# 规格与依赖的兼容性矩阵，preflight 用它做交叉检查
+compatibility:
+  postgres_major: ["16"]
+  redis_major: ["7"]
+  kubernetes_min: "1.28"
+  chart_version: "0.1.0"

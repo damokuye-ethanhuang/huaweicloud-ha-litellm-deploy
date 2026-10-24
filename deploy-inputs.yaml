@@ -1,0 +1,488 @@
+# =============================================================================
+# 部署参数清单 / Deployment inputs
+# =============================================================================
+# 这是唯一的填写入口。填完运行 ./scripts/preflight.sh 会自动校验并生成
+# terraform.tfvars 和一份人类可读的渲染结果（out/deployment-plan.md）。
+#
+# This is the only file you fill in. preflight renders terraform.tfvars,
+# the Helm values and a plain-language plan from it. Everything downstream
+# references these values; nothing needs to be typed twice.
+#
+# 规则 / Rules
+#   - 必填项标了 required: true，缺失时 preflight 会明确指出缺哪一项。
+#   - secret 类一律不填：密码和密钥由 Terraform 随机生成并写入 CSMS。
+#   - 表格形式（TSV）见 deploy-inputs.tsv，可用 Excel 打开；两者等价，
+#     YAML 适合脚本，TSV 适合人填。用 generate-inputs.sh 互转。
+#
+# 参数分组 / Sections
+#   project     项目与命名
+#   cloud       区域、站点、付费
+#   network     网络规划（纯内网）
+#   access      谁可以访问网关
+#   models      模型提供商（任意多组，数组形式）
+#   egress      出网方式
+#   tls         传输加密
+#   encryption  数据加密
+#   observability 日志与监控
+#   sizing      规格与容量
+# =============================================================================
+
+version: 1
+
+# -----------------------------------------------------------------------------
+# 项目与命名 / Project and naming
+# -----------------------------------------------------------------------------
+project:
+  - key: project_name
+    value: litellmtest01
+    required: true
+    format: '^[a-z][a-z0-9-]{2,23}$'
+    help: |
+      所有资源名的前缀，例如填 litellmtest01 会生成
+      litellmtest01-vpc / litellmtest01-cce / litellmtest01-rds ...
+      小写字母开头，3-24 位，只含小写字母、数字、连字符。
+      Prefix for every resource name. This is the uniqueness anchor.
+    validate: name_fits
+    map_to: terraform.project_name
+
+  - key: environment
+    value: prod
+    required: true
+    format: '^[a-z][a-z0-9]{0,11}$'
+    help: "环境标签，只用于打标签和告警分组，不参与资源命名。Tag only, not part of names."
+    map_to: terraform.environment
+
+  - key: owner
+    value: ""
+    required: true
+    format: '.{2,40}'
+    help: "负责团队或人，写入标签和告警通知。Team or owner recorded in tags."
+    map_to: tag.owner
+
+# -----------------------------------------------------------------------------
+# 区域与计费 / Region, site and billing
+# -----------------------------------------------------------------------------
+cloud:
+  - key: region
+    value: cn-southwest-2
+    required: true
+    help: "区域代码，如 cn-north-4。规格编码随区域变化，preflight 会校验。"
+    validate: region_exists
+    map_to: terraform.region
+
+  - key: site_type
+    value: domestic
+    required: true
+    allowed: [domestic, international]
+    help: "国内站 domestic / 国际站 international。国际站不支持企业项目。"
+    map_to: terraform.site_type
+
+  - key: enterprise_project_id
+    value: "0"
+    required: false
+    help: "企业项目 ID，国内站可填；0 表示默认项目。"
+    map_to: terraform.enterprise_project_id
+
+  - key: charging_mode
+    value: postPaid
+    required: false
+    allowed: [postPaid, prePaid]
+    help: "付费模式。长期运行建议 prePaid。"
+    map_to: terraform.charging_mode
+
+  - key: period_months
+    value: 1
+    required_if: charging_mode=prePaid
+    help: "包周期月数，仅 prePaid 时生效。"
+    map_to: terraform.period
+
+# -----------------------------------------------------------------------------
+# 网络规划 / VPC planning
+# -----------------------------------------------------------------------------
+network:
+  - key: vpc_cidr
+    value: "10.0.0.0/22"
+    required: true
+    validate: cidr_private_v4
+    help: |
+      VPC 网段，必须与本地数据中心、其他 VPC、VPN 对端都不重叠。
+      Must not overlap on-prem ranges reachable over VPN or peering.
+    map_to: terraform.vpc_cidr
+
+  - key: az_list
+    value: ["cn-southwest-2d", "cn-southwest-2e", "cn-southwest-2f"]
+    required: true
+    validate: az_count_ge_2
+    help: |
+      固定三个可用区，RDS/DCS 取前两个做主备，CCE 控制面三个都放。
+      贵阳一（cn-southwest-2）的可用区是 2a/2d/2e/2f，没有 b/c，
+      这里显式指定 2d/2e/2f，避免自动取到 2a。
+    map_to: terraform.az_list
+
+  - key: subnet_access_cidr
+    value: 10.0.0.0/24
+    required: true
+    validate: subnet_in_vpc
+    help: "接入子网：内网 ELB VIP、跳板机等入口组件。"
+    map_to: terraform.access_subnet_cidr
+
+  - key: subnet_app_cidr
+    value: 10.0.1.0/24
+    required: true
+    validate: subnet_in_vpc
+    help: "应用子网：CCE 工作节点。"
+    map_to: terraform.app_subnet_cidr
+
+  - key: subnet_data_cidr
+    value: 10.0.2.0/24
+    required: true
+    validate: subnet_in_vpc
+    help: "数据子网：RDS、DCS 等所有数据组件。仅应用子网可访问。"
+    map_to: terraform.data_subnet_cidr
+
+  - key: subnet_vpce_cidr
+    value: 10.0.3.0/27
+    required: true
+    validate: subnet_in_vpc
+    help: |
+      ModelArts 私网接入专用子网（/27，30 个地址，足够几个 VPCEP 终端节点）。
+      测试环境不启用 ModelArts 时可以不创建该子网（见 vpce_enabled）。
+    map_to: terraform.vpce_subnet_cidr
+
+  - key: pod_cidr
+    value: 172.16.0.0/16
+    required: true
+    help: |
+      CCE overlay 容器网段（不占 VPC 地址，不需要新子网）。
+      必须与 VPC 10.0.0.0/22 不重叠。
+    map_to: terraform.container_network_cidr
+
+# -----------------------------------------------------------------------------
+# 访问控制 / Who may call the gateway
+# -----------------------------------------------------------------------------
+access:
+  - key: client_cidrs
+    value: []
+    required: true
+    validate: cidr_private_v4_list
+    help: |
+      允许调用网关推理接口的源网段（如业务系统所在网段）。
+      纯内网方案里这些必须是私网地址，公网 CIDR 会被拒绝。
+    map_to: terraform.allowed_client_cidrs
+
+  - key: admin_cidrs
+    value: []
+    required: true
+    validate: cidr_private_v4_list
+    help: |
+      允许访问 Admin UI 与密钥管理 API 的网段，应比 client_cidrs 更窄，
+      通常只是运维跳板机或堡垒机网段。
+    map_to: terraform.admin_access_cidrs
+
+  - key: gateway_private_ip
+    value: ""
+    required: false
+    help: |
+      内网 ELB 的虚拟 IP，留空由 ELB 分配。填固定值便于业务侧写死 DNS 记录。
+    map_to: terraform.elb_vip_address
+
+  - key: bastion_enabled
+    value: true
+    required: false
+    help: |
+      CCE 不开公网端点，helm/kubectl 需要一台能连进来的机器。
+      开启后创建一台挂按需计费 EIP 的跳板机（唯一公网 IP），
+      本机 SSH 上去执行 helm。关闭则只能通过云内已有运维网段操作。
+    map_to: terraform.bastion_enabled
+
+  - key: bastion_ssh_cidrs
+    value: []
+    required_if: bastion_enabled=true
+    validate: cidr_public_or_private_list
+    help: |
+      允许 SSH 到跳板机的源网段（办公网出口 IP/32 或公司网段）。
+      跳板机是唯一公网入口，白名单必须收窄。
+    map_to: terraform.bastion_ssh_cidrs
+
+  - key: bastion_eip_bandwidth_mbit
+    value: 100
+    required_if: bastion_enabled=true
+    allowed_int_range: [1, 1000]
+    help: "跳板机 EIP 带宽（Mbit/s），按流量计费。"
+    map_to: terraform.bastion_eip_bandwidth_size
+
+  - key: bastion_flavor
+    value: c7.large.2
+    required_if: bastion_enabled=true
+    help: "跳板机规格，只跑 kubectl/helm，2 核 4G 足够。"
+    map_to: terraform.bastion_flavor
+
+  - key: vpn_enabled
+    value: false
+    required: false
+    help: "是否创建 VPN 网关（隧道配置仍需手工对接）。"
+    map_to: terraform.vpn_enabled
+
+  - key: customer_gateway_ip
+    value: ""
+    required_if: vpn_enabled=true
+    validate: ipv4
+    help: "对端 VPN 设备的公网 IP，启用 VPN 时必填。"
+    map_to: terraform.customer_gateway_ip
+
+# -----------------------------------------------------------------------------
+# 模型提供商 / Model providers（数组，任意多组）
+# -----------------------------------------------------------------------------
+# 每条一项，字段说明：
+#   name           LiteLLM 里对外暴露的模型名（客户端用这个名字调用）
+#   provider       协议类型：openai-compatible | maas | modelarts | azure
+#   model          上游真实模型名
+#   api_base       上游地址；ModelArts 内网接入时填 VPCEP 私网地址
+#   api_key_env    存放密钥的环境变量名，必须与 secrets/app.env 里的键一致
+#   api_key        仅当密钥由免责注入时才填，否则留空
+#   mode           chat | embedding | rerank | image_generation
+#   max_tokens     最大输出 token
+#   rpm / tpm      该部署的限速（null 表示不单独限制）
+#
+# 下面的值是**占位默认值**，不是任何真实环境的数据。上线前必须替换：
+#   api_base  改成你的实际接入地址（ModelArts VPCEP 私网地址或模型服务地址）
+#   model     改成上游真实的模型 ID
+#   api_key   留空，把密钥写进 secrets/app.env（键名见 api_key_env）
+#             若该模型免认证（上游不校验 Key），api_key 留空即可，网关不会发送
+#             Authorization 之外的空凭据；需要显式免认证时把 api_key_env
+#             指向一个值为 dummy 的变量即可（见文件末尾说明）。
+#
+# fallback：两个预置模型互为回退（rollback），规则在 egress.fallback_pairs 里定义。
+models:
+  - name: glm-5.3
+    provider: openai-compatible
+    model: glm-5.3
+    api_base: http://127.0.0.1:9/v1
+    api_key_env: GLM_API_KEY
+    api_key: ""
+    mode: chat
+    max_tokens: 8192
+    rpm: null
+    tpm: null
+
+  - name: deepseek-v4.1-flash
+    provider: openai-compatible
+    model: deepseek-v4.1-flash
+    api_base: http://127.0.0.1:9/v1
+    api_key_env: DEEPSEEK_API_KEY
+    api_key: ""
+    mode: chat
+    max_tokens: 8192
+    rpm: null
+    tpm: null
+
+# 追加模型示例（取消注释后即生效）：
+#  - name: qwen-internal
+#    provider: openai-compatible
+#    model: qwen3-32b
+#    api_base: http://10.0.50.21:8000/v1
+#    api_key_env: QWEN_API_KEY
+#    api_key: ""
+#    mode: chat
+#    max_tokens: 4096
+#    rpm: 600
+#    tpm: 300000
+
+# -----------------------------------------------------------------------------
+# 出网方式 / Egress
+# -----------------------------------------------------------------------------
+egress:
+  - key: model_endpoint_mode
+    value: nat
+    required: true
+    allowed: [vpcep, nat, none]
+    help: |
+      vpcep：仅通过 ModelArts 私网接入访问模型，无公网出口。
+             （VPCEP 终端节点复用数据子网，不再单独划子网。）
+      nat  ：允许网关经 NAT 访问外部模型 API（需要公网）。预置占位地址属此类。
+             （模型出网走应用子网 → NAT，不需要容器子网。）
+      none ：完全隔离，仅使用 VPC 内自建模型。
+    map_to: terraform.model_endpoint_mode
+
+  - key: vpce_enabled
+    value: false
+    required: false
+    help: |
+      是否创建 ModelArts 私网接入（VPCEP）。测试环境不起模型接入时保持 false，
+      此时只保留子网规划、不创建终端节点。
+    map_to: terraform.vpce_enabled
+
+  - key: modelarts_vpce_service_id
+    value: ""
+    required_if: model_endpoint_mode=vpcep
+    help: "ModelArts 内网接入的终端节点服务 ID，控制台「内网接入」页可查。"
+    map_to: terraform.modelarts_vpce_service_id
+
+  - key: nat_bandwidth_mbit
+    value: 100
+    required_if: model_endpoint_mode=nat
+    help: "NAT 出口带宽（Mbit/s），仅在 mode=nat 时生效。"
+    map_to: terraform.nat_eip_bandwidth_size
+
+  - key: fallback_enabled
+    value: true
+    required: false
+    help: |
+      开启模型互为回退（rollback）。开启后 glm-5.3 与 deepseek-v4.1-flash
+      任一失败（429/5xx/超时）会自动切到另一个，路由与冷却时间由 LiteLLM 管理。
+    map_to: helm.fallbacks
+
+  - key: fallback_cooldown_seconds
+    value: 60
+    required_if: fallback_enabled=true
+    allowed_int_range: [5, 3600]
+    help: "失败模型进入冷却的秒数，冷却期内流量全部走备用模型。"
+    map_to: helm.allowedFailsCooldown
+
+
+# -----------------------------------------------------------------------------
+# 传输加密 / TLS
+# -----------------------------------------------------------------------------
+tls:
+  - key: tls_mode
+    value: internal_ca
+    required: true
+    allowed: [elb_cert, internal_ca, none]
+    help: |
+      elb_cert   ：ELB 用公有 CA 证书终结 TLS。
+      internal_ca：ELB 用企业内部 CA 证书终结 TLS（内网方案的常见选择）。
+      none       ：VPC 内明文，仅限实验。
+    map_to: terraform.tls_mode
+
+  - key: certificate_id
+    value: ""
+    required_if: tls_mode=elb_cert,internal_ca
+    validate: uuid
+    help: "ELB 证书 ID（先在 SCM 上传并推送到 ELB）。"
+    map_to: terraform.certificate_id
+
+# -----------------------------------------------------------------------------
+# 数据加密 / Encryption（三个分支）
+# -----------------------------------------------------------------------------
+encryption:
+  - key: encryption_mode
+    value: kms
+    required: true
+    allowed: [kms, dew, disabled]
+    help: |
+      kms     ：本方案新建 KMS 密钥，加密 RDS 卷与 CCE 节点盘。
+      dew     ：复用安全团队管的 DEW/KMS 密钥（需填 existing_kms_key_id）。
+      disabled：不加密（仅用于实验环境，生产不推荐）。
+    map_to: terraform.kms_mode
+
+  - key: existing_kms_key_id
+    value: ""
+    required_if: encryption_mode=dew
+    validate: uuid
+    help: "已有 DEW/KMS 密钥 ID，encryption_mode=dew 时必填。"
+    map_to: terraform.kms_key_id
+
+# -----------------------------------------------------------------------------
+# 日志与监控 / Observability
+# -----------------------------------------------------------------------------
+observability:
+  - key: log_backend
+    value: lts
+    required: true
+    allowed: [lts, none]
+    help: |
+      lts ：日志入 LTS（ELB 访问日志 + CCE 容器标准输出）。
+      none：不采集（仅实验）。
+    map_to: terraform.log_backend
+
+  - key: metric_backend
+    value: aom
+    required: true
+    allowed: [aom, none]
+    help: |
+      aom ：指标入 AOM（Prometheus 实例 + 云服务指标）。
+      none：不采集（仅实验）。
+    map_to: terraform.metric_backend
+
+  - key: aom_retention
+    value: 360h
+    required_if: metric_backend=aom
+    allowed: ["360h", "420h", "1440h", "2160h"]
+    help: "AOM Prometheus 数据保留期，接口仅接受这四个值。"
+    map_to: terraform.aom_retention
+
+  - key: log_retention_days
+    value: 30
+    required: false
+    allowed_int_range: [7, 365]
+    help: "LTS 日志保留天数，按审计要求设定。"
+    map_to: terraform.lts_log_ttl_days
+
+  - key: grafana_endpoint
+    value: http://10.20.30.40:3000
+    required: true
+    help: |
+      本机 Grafana 地址（看板在本地编排，云端只负责存数据）。
+      填 URL，preflight 会尝试连通性检查。
+    map_to: runtime.grafana_endpoint
+
+  - key: alarm_email
+    value: ""
+    required: false
+    validate: email
+    help: "告警邮件。SMN 需收件人点击确认后才开始投递。"
+    map_to: terraform.alarm_email
+
+# -----------------------------------------------------------------------------
+# 规格与容量 / Sizing
+# -----------------------------------------------------------------------------
+sizing:
+  - key: cce_cluster_version
+    value: ""
+    required: false
+    help: |
+      留空 = 执行时用官方 SDK 查询本区域当前支持的版本并自动填入
+      （scripts/resolve-cce-version.py）。也可以手填精确补丁号，
+      如 v1.31.1-r0；只写 v1.31 在部分区域会被拒绝。
+    map_to: terraform.cce_cluster_version
+
+  - key: node_flavor
+    value: c7.xlarge.2
+    required: true
+    help: "CCE 工作节点规格，每 AZ 一个节点池。规格编码随区域变化。"
+    map_to: terraform.cce_node_flavor
+
+  - key: nodes_per_az
+    value: 1
+    required: false
+    allowed_int_range: [1, 10]
+    help: "每个 AZ 的节点数，默认 1（3 AZ 共 3 节点）。"
+    map_to: terraform.cce_node_count_per_az
+
+  - key: litellm_replicas
+    value: 3
+    required: false
+    allowed_int_range: [2, 20]
+    help: |
+      网关副本数。连接预算 = 副本数 × 工作进程数 × 每进程连接池（默认 10），
+      必须小于 RDS 最大连接数。
+    map_to: helm.replicaCount
+
+  - key: rds_flavor
+    value: rds.pg.n1.xlarge.2.ha
+    required: true
+    help: "RDS PostgreSQL 主备规格（必须 .ha，测试环境也保持主备，不使用单机）。"
+    map_to: terraform.rds_flavor
+
+  - key: dcs_flavor
+    value: redis.ha.xu1.large.r2.2
+    required: true
+    help: "DCS Redis 主备规格（必须 ha，测试环境也保持主备）。"
+    map_to: terraform.dcs_flavor
+
+  - key: litellm_version
+    value: "1.106.3"
+    required: true
+    format: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    help: "LiteLLM 镜像版本，必须精确到补丁号，禁止 latest。"
+    map_to: terraform.litellm_version

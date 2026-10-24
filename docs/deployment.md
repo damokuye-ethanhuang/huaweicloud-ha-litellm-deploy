@@ -1,5 +1,19 @@
 # Deployment
 
+## 0. SDK（用于解析 CCE 版本）
+
+CCE 会下线旧版本，且部分区域要求精确补丁号（如 `v1.31.1-r0`）。部署时用官方 SDK
+查询本区域当前支持的版本，而不是写死一个会过期的值：
+
+```bash
+python3 -m venv .venv-sdk
+.venv-sdk/bin/pip install huaweicloudsdkcce
+.venv-sdk/bin/python scripts/resolve-cce-version.py --dry-run
+```
+
+鉴权走 SDK 自带的凭据链（`HW_ACCESS_KEY`/`HW_SECRET_KEY` 或
+`~/.huaweicloud/credentials`），仓库里不写任何签名逻辑。
+
 ## 1. Prerequisites
 
 | Tool | Version | Purpose |

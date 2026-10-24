@@ -1,6 +1,12 @@
 variable "name_prefix" {
-  description = "Prefix applied to resource names."
+  description = "Deprecated: kept for compatibility. Names come from `names`, see the naming module."
   type        = string
+  default     = ""
+}
+
+variable "names" {
+  description = "Name map from terraform/modules/naming. Selectors: elb, eip, cert"
+  type        = map(string)
 }
 
 variable "vpc_id" {
@@ -29,14 +35,20 @@ variable "l7_flavor_id" {
   default     = ""
 }
 
+variable "internal" {
+  description = "true (default): no EIP, the load balancer is only reachable from the VPC and connected networks. false attaches an EIP (public exposure - not allowed in the internal reference design)."
+  type        = bool
+  default     = true
+}
+
 variable "eip_bandwidth_size" {
-  description = "Public bandwidth in Mbit/s for the gateway EIP."
+  description = "Public bandwidth in Mbit/s. Ignored when internal = true."
   type        = number
   default     = 300
 }
 
 variable "eip_charge_mode" {
-  description = "EIP billing mode: traffic or bandwidth."
+  description = "EIP billing mode: traffic or bandwidth. Ignored when internal = true."
   type        = string
   default     = "traffic"
 }

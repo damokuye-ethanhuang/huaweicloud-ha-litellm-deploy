@@ -13,6 +13,6 @@ resource "huaweicloud_vpcep_endpoint" "this" {
   vpc_id      = var.vpc_id
   network_id  = var.subnet_id
   enable_dns  = var.enable_dns
-  description = "${var.name_prefix} private endpoint"
+  description = "${var.names["vpce"]} private endpoint"
   tags        = local.tags
 }

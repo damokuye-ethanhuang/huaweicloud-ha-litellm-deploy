@@ -4,13 +4,18 @@ output "loadbalancer_id" {
 }
 
 output "public_ip" {
-  description = "Public IP of the gateway."
-  value       = huaweicloud_vpc_eip.this.address
+  description = "Public IP when an EIP was attached (internal = false). Empty for the internal design."
+  value       = var.internal ? "" : huaweicloud_vpc_eip.this[0].address
 }
 
 output "private_ip" {
-  description = "Private VIP of the load balancer."
+  description = "Private VIP of the load balancer. This is the address clients in the VPC use."
   value       = huaweicloud_elb_loadbalancer.this.ipv4_address
+}
+
+output "internal" {
+  description = "Whether the load balancer is private-only."
+  value       = var.internal
 }
 
 output "certificate_id" {

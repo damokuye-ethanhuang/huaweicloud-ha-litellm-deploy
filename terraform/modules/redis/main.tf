@@ -23,7 +23,7 @@ data "huaweicloud_dcs_flavors" "ha" {
 }
 
 resource "huaweicloud_dcs_instance" "this" {
-  name               = "${var.name_prefix}-redis"
+  name               = var.names["dcs"]
   engine             = "Redis"
   engine_version     = var.engine_version
   capacity           = var.capacity

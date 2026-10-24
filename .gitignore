@@ -57,3 +57,10 @@ dist/
 build/
 *.log
 tmp/
+.venv-sdk/
+out/
+
+# Archify transient receipts
+docs/*.finalize*.json
+docs/*.browser-check.json
+docs/*.delivery.json

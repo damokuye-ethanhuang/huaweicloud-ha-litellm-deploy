@@ -16,7 +16,7 @@ data "huaweicloud_vpn_gateway_availability_zones" "this" {
 }
 
 resource "huaweicloud_vpn_gateway" "this" {
-  name               = "${var.name_prefix}-vpn"
+  name               = var.names["vpn"]
   vpc_id             = var.vpc_id
   connect_subnet     = var.connect_subnet_id
   local_subnets      = var.local_subnets
@@ -24,14 +24,14 @@ resource "huaweicloud_vpn_gateway" "this" {
   flavor             = var.flavor
 
   eip1 {
-    bandwidth_name = "${var.name_prefix}-vpn-eip1"
+    bandwidth_name = "${var.names["eip"]}-1"
     type           = "5_bgp"
     bandwidth_size = var.eip_bandwidth_size
     charge_mode    = "traffic"
   }
 
   eip2 {
-    bandwidth_name = "${var.name_prefix}-vpn-eip2"
+    bandwidth_name = "${var.names["eip"]}-2"
     type           = "5_bgp"
     bandwidth_size = var.eip_bandwidth_size
     charge_mode    = "traffic"
@@ -44,7 +44,7 @@ resource "huaweicloud_vpn_gateway" "this" {
 resource "huaweicloud_vpn_customer_gateway" "this" {
   count = local.create_customer_gateway ? 1 : 0
 
-  name = "${var.name_prefix}-customer-gw"
+  name = "${var.names["vpn"]}-cgw"
   ip   = var.customer_gateway_ip
 
   tags = local.tags
