@@ -183,6 +183,7 @@ config/           single source of truth for litellm-config.yaml
 scripts/          deploy, migrate, smoke test, image mirroring, destroy
 docs/             architecture, deployment, operations, security, cost, regions, checklist
 monitoring/       AOM alert rules + Grafana dashboard + wiring guide
+skills/           Agent skill with the deployment flow (installed via `make skill-install`)
 ```
 
 ## Validation status
@@ -219,6 +220,7 @@ The first `terraform plan` in your account is the real acceptance test.
 | [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM, who calls the gateway |
 | [docs/sa-checklist.md](docs/sa-checklist.md) | Tick-box planning checklist: network, egress, data, encryption, go-live |
 | [monitoring/README.md](monitoring/README.md) | LTS logs, AOM metrics, alert rules, local Grafana |
+| [skills/litellm-huaweicloud-deploy/SKILL.md](skills/litellm-huaweicloud-deploy/SKILL.md) | Agent skill: staged flow, bastion handoff, failure routing |
 | [monitoring/alerting-rules.yaml](monitoring/alerting-rules.yaml) | AOM alert rules (availability, latency, errors, saturation) |
 | [monitoring/grafana-dashboard.json](monitoring/grafana-dashboard.json) | Grafana dashboard for AOM's Prometheus endpoint |
 | [docs/cost.md](docs/cost.md) | Resource list, reference prices, cost levers |

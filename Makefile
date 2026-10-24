@@ -5,8 +5,8 @@ NAMESPACE ?= litellm
 
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap init plan apply app-deploy smoke migrate mirror fmt validate lint \
-	destroy package-chart
+.PHONY: help bootstrap init plan apply app-deploy remote-deploy smoke migrate mirror fmt \
+	validate lint destroy package-chart skill-install
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -23,8 +23,11 @@ plan: ## terraform plan for TF_DIR (default: cce-ha)
 apply: ## terraform apply for TF_DIR
 	./scripts/deploy-infra.sh apply $(TF_DIR)
 
-app-deploy: ## Create the k8s Secret and helm upgrade --install the gateway
-	./scripts/deploy-app.sh
+app-deploy: ## Create the k8s Secret and helm upgrade --install (needs cluster access)
+	./scripts/deploy.sh deploy-app
+
+remote-deploy: ## Bundle + upload + deploy the app via the bastion
+	./scripts/deploy.sh --remote all
 
 smoke: ## Probe liveness, readiness and /v1/models
 	./scripts/smoke-test.sh
@@ -45,6 +48,12 @@ lint: validate ## Alias for validate
 
 destroy: ## Destroy TF_DIR (requires CONFIRM=yes)
 	CONFIRM=yes ./scripts/destroy.sh $(TF_DIR)
+
+skill-install: ## Symlink the repo skill into ~/.hermes/skills (single source of truth)
+	mkdir -p "$$HOME/.hermes/skills/software-development"
+	ln -sfn "$$(pwd)/skills/litellm-huaweicloud-deploy" \
+		"$$HOME/.hermes/skills/software-development/litellm-huaweicloud-deploy"
+	@echo "installed: $$HOME/.hermes/skills/software-development/litellm-huaweicloud-deploy"
 
 package-chart: ## Package the Helm chart into dist/
 	mkdir -p dist

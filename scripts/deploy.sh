@@ -9,6 +9,13 @@
 #   ./scripts/deploy.sh verify
 #   ./scripts/deploy.sh all             # everything, apply included
 #
+# Remote execution (laptop outside the VPC: the cluster API and the ELB VIP are
+# both unreachable, only the bastion is):
+#
+#   ./scripts/deploy.sh --remote deploy-app   # bundle + upload + helm on the bastion
+#   ./scripts/deploy.sh --remote verify       # smoke test on the bastion
+#   ./scripts/deploy.sh --remote all          # bundle + upload + deploy-app + verify
+#
 # Every stage is idempotent and can be re-run on its own after a failure.
 # All parameters come from deploy-inputs.yaml via preflight; nothing is typed
 # twice. Secrets never pass through this script's arguments.
@@ -20,7 +27,16 @@ source "$(dirname "$0")/lib.sh"
 REPO="$(repo_root)"
 TF_DIR="$REPO/terraform/examples/cce-ha"
 OUT_DIR="$REPO/out"
-STAGE="${1:-plan}"
+REMOTE=0
+STAGE=""
+for arg in "$@"; do
+  case "$arg" in
+    --remote) REMOTE=1 ;;
+    -*) die "unknown flag: $arg" ;;
+    *) STAGE="$arg" ;;
+  esac
+done
+STAGE="${STAGE:-plan}"
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-$HOME/.kube/litellm-gateway.yaml}"
 export KUBECONFIG="$KUBECONFIG_FILE"
 
@@ -138,6 +154,14 @@ run_verify() {
   "$REPO/scripts/smoke-test.sh" "$ENDPOINT" || die "smoke test failed; see docs/troubleshooting.md"
   ok "verification passed"
 }
+
+if [ "$REMOTE" = "1" ]; then
+  # In-cluster stages cannot run here: hand the whole bundle to the bastion.
+  case "$STAGE" in
+    deploy-app | verify | all) exec "$REPO/scripts/remote-deploy.sh" "$STAGE" ;;
+    *) die "--remote only applies to deploy-app, verify and all (got '$STAGE')" ;;
+  esac
+fi
 
 case "$STAGE" in
   preflight) run_preflight ;;

@@ -44,6 +44,23 @@
    密钥，它的可达范围应该比推理接口更小。
 3. **加密的 `disabled` 分支只为实验。** 生产环境即使选 `dew`，也不要选 `disabled`。
 
+## 模型列表：直接粘贴表格
+
+允许直接贴这种四列格式（`名称 | api_base | api_key | model`），我会转成 YAML：
+
+```
+glm-5.3 | https://<maas-vpce-ip>/v2/ | sk-xxx | openai/glm-5.3
+deepseek-v4.1-flash | https://<modelarts-vpce-ip>/v1/ | | openai/deepseek-v4.1-flash
+```
+
+转换规则：
+
+- 第 3 列 KEY **不写进** `deploy-inputs.yaml`，而是写进 `secrets/app.env`
+  （已 gitignore），YAML 里只留 `api_key_env` 的变量名；
+- 第 3 列为空表示该端点免认证，变量留空即可；
+- 已有条目只追加不替换；
+- 所有条目互为 fallback。
+
 ## 模型列表怎么写
 
 `models` 是数组，可以写任意多组，每组字段：

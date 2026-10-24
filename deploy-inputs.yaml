@@ -53,7 +53,7 @@ project:
     map_to: terraform.environment
 
   - key: owner
-    value: ""
+    value: "Ethan"
     required: true
     format: '.{2,40}'
     help: "负责团队或人，写入标签和告警通知。Team or owner recorded in tags."
@@ -162,7 +162,7 @@ network:
 # -----------------------------------------------------------------------------
 access:
   - key: client_cidrs
-    value: []
+    value: ["10.0.0.0/24"]
     required: true
     validate: cidr_private_v4_list
     help: |
@@ -171,7 +171,7 @@ access:
     map_to: terraform.allowed_client_cidrs
 
   - key: admin_cidrs
-    value: []
+    value: ["10.0.0.0/24"]
     required: true
     validate: cidr_private_v4_list
     help: |
@@ -196,7 +196,7 @@ access:
     map_to: terraform.bastion_enabled
 
   - key: bastion_ssh_cidrs
-    value: []
+    value: ["198.51.100.0/24"]
     required_if: bastion_enabled=true
     validate: cidr_public_or_private_list
     help: |
