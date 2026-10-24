@@ -76,32 +76,33 @@ ModelArts → 授权.
 
 ## Wiring it into LiteLLM
 
-Add the access address to `secrets/app.env`:
+Add the access address and key to `secrets/app.env`, using the variable names
+your `deploy-inputs.yaml` entries reference in `api_key_env`:
 
 ```bash
-MODELARTS_API_BASE=http://10.0.3.42/v1
-MODELARTS_API_KEY=<key issued by ModelArts/MaaS>
+GLM_API_KEY=<key issued by ModelArts/MaaS>
 ```
 
-The sample model in `config/litellm-config.yaml` already reads both variables:
+and declare the model in `deploy-inputs.yaml`:
 
 ```yaml
-- model_name: maas-chat
-  litellm_params:
-    model: openai/DeepSeek-V4-Flash
-    api_base: os.environ/MODELARTS_API_BASE
-    api_key: os.environ/MODELARTS_API_KEY
+models:
+  - name: glm-5.3
+    model: openai/glm-5.3          # the openai/ prefix selects the OpenAI-compatible path
+    api_base: https://<vpce-ip>/v2/
+    api_key_env: GLM_API_KEY
+    mode: chat
 ```
 
-The `openai/` prefix tells LiteLLM to use the OpenAI-compatible path, so the
-model name is passed through unchanged.
+With `api_base` pointing at a VPC endpoint IP, no NAT or public egress is
+needed.
 
 ## Verify from inside the cluster
 
 ```bash
 kubectl -n litellm exec deploy/litellm -- \
   curl -sS http://10.0.3.42/v1/models \
-  -H "Authorization: Bearer $MODELARTS_API_KEY"
+  -H "Authorization: Bearer $GLM_API_KEY"
 ```
 
 If that hangs, the endpoint IP is not reachable from the pod subnet — check the

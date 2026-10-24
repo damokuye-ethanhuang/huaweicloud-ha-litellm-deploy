@@ -69,16 +69,19 @@ state files on laptops longer than necessary.
 
 | Control | Default |
 |---|---|
-| RDS/DCS exposure | Private subnet, no EIP, security group allows 5432/6379 only from the VPC CIDR |
-| Gateway ingress | `elb_ingress_cidrs` (restrict in production) |
-| SSH | Disabled unless `ssh_ingress_cidrs` is set |
-| Pod egress | NAT gateway; pods never get public IPs |
-| TLS | Required in production; `enable_https = false` is a lab switch |
-| Trusted proxies | `trusted_proxy_ranges: 10.0.0.0/16` matches the VPC |
+| RDS/DCS exposure | Data subnet, no EIP, security group accepts 5432/6379 only from the app subnet |
+| Gateway ingress | internal ELB, no EIP; `client_cidrs` decides who may call `/v1/*` |
+| Admin plane | `admin_cidrs`, deliberately narrower than `client_cidrs` |
+| SSH | only to the bastion, only from `bastion_ssh_cidrs` |
+| Public surface | exactly one: the bastion EIP |
+| Pod egress | NAT gateway (only if model endpoints need public internet); pods never get public IPs |
+| TLS | `enable_https` with an ELB certificate; disabling it is a lab switch |
+| Trusted proxies | `trusted_proxy_ranges` rendered to match the VPC CIDR |
 
-The ELB is the only public entry point. If you need to keep the gateway fully
-private, drop the EIP from the ELB module and reach it over VPN or a private
-link.
+The ELB is **internal**. There is no path from the internet to the gateway, which
+is why `client_cidrs`/`admin_cidrs` must be private ranges — a public CIDR there
+would never match a real source address. If callers live elsewhere, connect that
+network (VPN or peering) rather than exposing the ELB.
 
 ## TLS
 
@@ -128,13 +131,14 @@ in the operator's home directory.
 
 - `STORE_MODEL_IN_DB=true` means the database, not git, is the source of truth
   for models after boot. Restrict Admin UI access accordingly.
-- Virtual keys should have budgets and rate limits; per-team keys are the
-  intended isolation boundary.
+- Keys are for model-scoped authorization only: this stack does not use LiteLLM
+  budgeting or rate limiting. Keep each key's `models` list tight — it is the
+  only thing stopping one team from consuming another team's model quota.
 - Do not enable `store_prompts_in_spend_logs` unless you need it: prompts are
   sensitive and the rows get large (LiteLLM recommends more memory headroom).
 - `allow_requests_on_db_unavailable` is deliberately **not** enabled. Enabling
   it lets requests proceed with a restricted identity during a database outage;
-  that is a availability/security trade-off you should make explicitly.
+  that is an availability/security trade-off you should make explicitly.
 - Set `background_health_checks` only if you accept the token cost of probing
   every model.
 
@@ -143,20 +147,24 @@ in the operator's home directory.
 - ELB access logs go to LTS (`huaweicloud_elb_log`).
 - LiteLLM writes spend logs and request metadata to PostgreSQL; set a retention
   policy if the table grows.
-- Cloud Eye alarms are opt-in; at minimum subscribe to the ELB unhealthy-backend
-  alarm before going live.
+- Alerts and dashboards ship in `monitoring/`; import them rather than writing
+  your own, so a metric rename breaks one file instead of N consoles.
 - Rotate the master key when an administrator leaves; there is no per-admin
   identity in front of the Admin UI.
 
 ## Pre-production checklist
 
+The full, itemised checklist lives in [sa-checklist.md](sa-checklist.md) —
+including the network, egress, data-tier and encryption gates this file only
+summarises. Security-relevant items repeated here for review purposes:
+
 - [ ] dedicated IAM user, MFA on the account, no shared AK/SK
 - [ ] state bucket private + encrypted, access logged
 - [ ] TLS certificate valid, TLS 1.2+ only, `enable_https = true`
-- [ ] `elb_ingress_cidrs` not `0.0.0.0/0`
-- [ ] SSH ingress empty
+- [ ] `client_cidrs` and `admin_cidrs` are private ranges, not `0.0.0.0/0`
+- [ ] `bastion_ssh_cidrs` contains only operator egress
 - [ ] salt key backed up outside Terraform state as well
 - [ ] image verified with cosign and mirrored to SWR
 - [ ] `secrets/app.env` gitignored and absent from shell history
-- [ ] alarms configured, email subscription confirmed
+- [ ] alarm rules and dashboard imported from `monitoring/`
 - [ ] restore drill completed on a non-production RDS instance

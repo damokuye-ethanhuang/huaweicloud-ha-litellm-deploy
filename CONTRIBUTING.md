@@ -20,15 +20,18 @@ local run is a good predictor.
 
 ## Changing the LiteLLM config
 
-`config/litellm-config.yaml` is the single source of truth. The chart copy is
-generated:
+There is no hand-edited `config.yaml`. Non-secret settings live in
+`charts/litellm/values.yaml` under `config.settings`, the model list is rendered
+from `deploy-inputs.yaml`, and `scripts/deploy.sh preflight` writes the result to
+`out/helm-values.yaml`. Edit the inputs, re-run preflight, redeploy:
 
 ```bash
-make sync-config
-make validate
+./scripts/deploy.sh preflight
+./scripts/deploy.sh --remote deploy-app
 ```
 
-CI fails when the two files drift.
+Never add a second YAML document to the generated config: LiteLLM reads only the
+first document and silently ignores the rest.
 
 ## Changing the chart
 

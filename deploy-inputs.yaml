@@ -1,7 +1,7 @@
 # =============================================================================
 # 部署参数清单 / Deployment inputs
 # =============================================================================
-# 这是唯一的填写入口。填完运行 ./scripts/preflight.sh 会自动校验并生成
+# 这是唯一的填写入口。填完运行 ./scripts/deploy.sh preflight 会自动校验并生成
 # terraform.tfvars 和一份人类可读的渲染结果（out/deployment-plan.md）。
 #
 # This is the only file you fill in. preflight renders terraform.tfvars,

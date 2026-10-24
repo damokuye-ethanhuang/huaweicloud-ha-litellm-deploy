@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- One deployment implementation: `deploy-app.sh` is a shim over
+  `deploy.sh deploy-app`. The previous duplicate read a removed output and
+  skipped the rendered model list, producing a gateway with no models.
+- `deploy.sh --remote` runs in-cluster stages on the bastion; a machine outside
+  the VPC cannot reach the CCE API or the private ELB.
+- Documentation consolidated: one canonical flow (`docs/deployment.md`), one
+  checklist (`docs/sa-checklist.md`), one index in the READMEs.
+- The flow ships as an agent skill in `skills/litellm-huaweicloud-deploy`,
+  symlinked into `~/.hermes/skills` by `make skill-install`.
+
+### Added
+
+- `monitoring/`: AOM alert rules, Grafana dashboard, wiring guide.
+- `docs/sa-checklist.md`: solution-architect planning checklist.
+- `scripts/check-docs.py`: fails on removed concepts, broken links and README
+  drift; `scripts/check-monitoring.py`: validates alert rules and their runbook
+  anchors.
+- `scripts/remote-deploy.sh`: bastion bundle/push/exec.
+
+### Removed
+
+- `scripts/preflight.sh`, `scripts/deploy-infra.sh`, `scripts/bastion-exec.sh`
+  (superseded by `deploy.sh`, `remote-deploy.sh`).
+- `doc-forlearn01.txt` (external draft, not part of this project).
+
 ## [0.1.0] - 2026-10-24
 
 Initial public release.

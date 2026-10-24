@@ -1,7 +1,7 @@
 # 参数填写指南 / Inputs guide
 
 部署只需要改一个文件：**`deploy-inputs.yaml`**。填完运行
-`./scripts/preflight.sh`（或 `python3 scripts/preflight.py`），它会校验并生成下游
+`./scripts/deploy.sh preflight`（或 `python3 scripts/preflight.py`），它会校验并生成下游
 需要的全部产物。
 
 ## 为什么是这个形式
@@ -67,16 +67,18 @@ deepseek-v4.1-flash | https://<modelarts-vpce-ip>/v1/ | | openai/deepseek-v4.1-f
 
 ```yaml
 models:
-  - name: maas-deepseek          # 对外模型名，客户端用这个调用
-    provider: modelarts          # modelarts | maas | openai-compatible | azure
-    model: DeepSeek-V4-Flash     # 上游真实模型名
-    api_base: ""                 # 留空=用 VPCEP 私网地址；自建模型填 http://ip:port/v1
-    api_key_env: MODELARTS_API_KEY  # 密钥放哪个环境变量
-    mode: chat                   # chat | embedding | rerank | image_generation
+  - name: glm-5.3                  # 对外模型名，客户端用这个调用
+    model: glm-5.3                 # 上游真实模型名（渲染时自动加 openai/ 前缀）
+    api_base: https://<vpce-ip>/v2/   # 留空则用 VPCEP 默认地址
+    api_key_env: GLM_API_KEY       # 密钥放哪个环境变量
+    mode: chat                     # chat | embedding | rerank | image_generation
     max_tokens: 8192
-    rpm: null                    # 可选限速
+    rpm: null                      # 可选限速
     tpm: null
 ```
+
+必填只有 `name`、`model`、`mode`；`api_base` 留空表示走 VPCEP 私网地址。
+没有 `provider` 字段——所有模型都按 OpenAI 兼容协议调用。
 
 密钥**不写在这个文件里**，放在 `secrets/app.env`（已 gitignore），部署时合并进
 Kubernetes Secret。

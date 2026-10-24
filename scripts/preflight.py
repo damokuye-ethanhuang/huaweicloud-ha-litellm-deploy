@@ -393,7 +393,7 @@ def render_models(doc: dict[str, Any]) -> str:
 def render_plan(v: dict[str, Any], doc: dict[str, Any], counts: dict[str, int]) -> str:
     models = doc.get("models") or []
     rows = "\n".join(
-        f"| `{m['name']}` | {m.get('provider')} | {m['model']} | {m.get('mode', 'chat')} | "
+        f"| `{m['name']}` | {m['model']} | {m.get('mode', 'chat')} | "
         f"{m.get('api_base') or 'default (VPC endpoint)'} | `{m.get('api_key_env')}` |"
         for m in models
     )
@@ -411,11 +411,13 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 
 | 资源 | 名称 |
 |---|---|
-| VPC | `{v.get('project_name')}-vpc` |
-| 应用/数据/VPCE 子网 | `{v.get('project_name')}-subnet-app` / `-data` / `-vpce` |
-| CCE 集群 | `{v.get('project_name')}-cce` |
-| RDS / DCS | `{v.get('project_name')}-rds` / `-dcs` |
-| 内网 ELB | `{v.get('project_name')}-elb` |
+| VPC | `{v.get('project_name')}-maas-vpc` |
+| 接入/应用/数据/VPCE 子网 | `-maas-access-subnet` / `-maas-app-subnet` / `-maas-data-subnet` / `-maas-vpce-subnet` |
+| 安全组 | `-maas-sg-elb` / `-maas-sg-data` / `-maas-sg-admin` / `-maas-sg-bastion` |
+| CCE 集群 | `{v.get('project_name')}-maas-cce` |
+| RDS / DCS | `{v.get('project_name')}-maas-rds` / `-maas-dcs` |
+| 内网 ELB | `{v.get('project_name')}-maas-elb` |
+| 跳板机 | `{v.get('project_name')}-maas-bastion`（唯一公网 EIP） |
 | 密钥（CSMS） | `{v.get('project_name')}-litellm-master-key` 等 |
 
 ## 网络 / Network
@@ -446,8 +448,8 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 
 ## 模型 / Models
 
-| 对外模型名 | 协议 | 上游模型 | 模式 | 地址 | 密钥环境变量 |
-|---|---|---|---|---|---|
+| 对外模型名 | 上游模型 | 模式 | 地址 | 密钥环境变量 |
+|---|---|---|---|---|
 {rows}
 
 ## 观测 / Observability

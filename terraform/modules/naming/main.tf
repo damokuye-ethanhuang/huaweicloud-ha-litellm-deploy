@@ -10,14 +10,15 @@ terraform {
 #
 # Example with project_name = "litellmtest01":
 #
-#   litellmtest01-vpc              VPC
-#   litellmtest01-subnet-app       application subnet (CCE nodes + internal ELB VIP)
-#   litellmtest01-subnet-data      data subnet (RDS, DCS)
-#   litellmtest01-sg-elb           security group for the internal load balancer
-#   litellmtest01-cce              CCE cluster
-#   litellmtest01-rds              RDS PostgreSQL
-#   litellmtest01-elb              internal load balancer
-#   litellmtest01-litellm-master-key   CSMS secret
+#   litellmtest01-maas-vpc              VPC
+#   litellmtest01-maas-access-subnet    front-end subnet (ELB VIP, bastion)
+#   litellmtest01-maas-app-subnet       application subnet (CCE nodes)
+#   litellmtest01-maas-data-subnet      data subnet (RDS, DCS)
+#   litellmtest01-maas-sg-elb           security group for the internal load balancer
+#   litellmtest01-maas-cce              CCE cluster
+#   litellmtest01-maas-rds              RDS PostgreSQL
+#   litellmtest01-maas-elb              internal load balancer
+#   litellmtest01-litellm-master-key    CSMS secret
 #
 # Rules
 #   - `project_name` is the only uniqueness anchor: two stacks in one account

@@ -6,6 +6,8 @@
 #   ./scripts/remote-deploy.sh deploy-app      # helm install, executed ON the bastion
 #   ./scripts/remote-deploy.sh verify          # smoke test, executed ON the bastion
 #   ./scripts/remote-deploy.sh all             # bundle + push + deploy-app + verify
+#   ./scripts/remote-deploy.sh exec <command>  # ad-hoc command on the bastion
+#   ./scripts/remote-deploy.sh put <local>:<remote>
 #
 # Why: the CCE API has no public endpoint and the ELB is internal, so a laptop
 # outside the VPC can create infrastructure (cloud APIs are public) but cannot
@@ -202,10 +204,37 @@ bundle_gateway() {
   printf '%s' "$gateway"
 }
 
+cmd_exec() {
+  [ "$#" -gt 0 ] || die "usage: remote-deploy.sh exec <command...>"
+  setup_ssh
+  # KUBECONFIG points at the bundle, so day-2 kubectl/helm work with no setup.
+  "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "${SSH_TARGET[@]}" \
+    "export KUBECONFIG='$REMOTE_DIR/kubeconfig'; $*"
+}
+
+cmd_put() {
+  [ -n "${1:-}" ] || die "usage: remote-deploy.sh put <local>:<remote>"
+  setup_ssh
+  local src="${1%%:*}" dst="${1#*:}"
+  [ -f "$src" ] || die "local file not found: $src"
+  log "uploading $src -> ${REMOTE_HOST}:${dst}"
+  tar czf - -C "$(dirname "$src")" "$(basename "$src")" |
+    "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "${SSH_TARGET[@]}" \
+      "d=\$(dirname '$dst'); mkdir -p \"\$d\" && tar xzf - -C \"\$d\" && echo uploaded"
+}
+
 case "${1:-all}" in
   bundle) cmd_bundle ;;
   push) cmd_push ;;
   deploy-app | verify) cmd_run "$1" ;;
+  exec)
+    shift
+    cmd_exec "$@"
+    ;;
+  put)
+    shift
+    cmd_put "$@"
+    ;;
   all)
     cmd_bundle
     cmd_push
@@ -213,6 +242,6 @@ case "${1:-all}" in
     cmd_run verify
     ;;
   *)
-    die "usage: remote-deploy.sh [bundle|push|deploy-app|verify|all]"
+    die "usage: remote-deploy.sh [bundle|push|deploy-app|verify|all|exec <cmd>|put <local>:<remote>]"
     ;;
 esac

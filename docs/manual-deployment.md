@@ -215,17 +215,17 @@ Grafana 里编排。管理口令存 CSMS 的 `{项目名}-grafana-admin`。
    之外的「Opaque 密钥」），内容为上面 5 条中的前 4 条，键名分别是
    `LITELLM_MASTER_KEY`、`LITELLM_SALT_KEY`、`DATABASE_URL`
    （形如 `postgresql://root:<密码>@<RDS内网地址>:5432/litellm?schema=public`）、
-   `REDIS_PASSWORD`，再加上模型密钥（如 `MODELARTS_API_KEY`）。
+   `REDIS_PASSWORD`，再加上模型密钥（如 `GLM_API_KEY`，与 `api_key_env` 同名）。
 2. 创建 ConfigMap `litellm-config`，`config.yaml` 内容按
    `out/models.rendered.yaml`（模型列表）+ 下面的静态段拼成**一个 YAML 文档**：
 
 ```yaml
 model_list:
-  - model_name: maas-deepseek
+  - model_name: glm-5.3
     litellm_params:
-      model: openai/DeepSeek-V4-Flash
-      api_key: os.environ/MODELARTS_API_KEY
-      api_base: http://<VPCEP私网IP>/v1
+      model: openai/glm-5.3
+      api_key: os.environ/GLM_API_KEY
+      api_base: http://<VPCEP私网IP>/v2/
     model_info:
       mode: chat
 

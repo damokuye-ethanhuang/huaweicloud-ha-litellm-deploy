@@ -67,53 +67,55 @@ database and Redis carry everything that must survive a pod or AZ failure.
 
 ## Quick start
 
-### Lab tier (single VM, ~10 minutes)
+### Production tier (CCE, HA) — the supported path
 
 ```bash
 export HW_ACCESS_KEY=... HW_SECRET_KEY=...     # a dedicated IAM user, not your main account
-cp terraform/examples/vm-single/terraform.tfvars.example terraform/examples/vm-single/terraform.tfvars
-$EDITOR terraform/examples/vm-single/terraform.tfvars  # set allowed_ingress_cidrs
 
-make plan  TF_DIR=terraform/examples/vm-single
-make apply TF_DIR=terraform/examples/vm-single
+$EDITOR deploy-inputs.yaml                          # the only file you edit
+
+./scripts/deploy.sh preflight   # validate + render out/
+./scripts/deploy.sh plan        # save a plan; changes nothing
+#   ◄── read the plan before applying
+./scripts/deploy.sh apply-infra # 20–40 min, mostly CCE
+./scripts/deploy.sh --remote deploy-app   # helm, executed on the bastion
+./scripts/deploy.sh --remote verify       # smoke test, executed on the bastion
 ```
 
-The instance installs Docker, starts PostgreSQL 16, Redis 7 and LiteLLM, and
-serves `http://<eip>:4000`. This tier exists for evaluation: it is a single
-point of failure, speaks plain HTTP and delivers secrets through cloud-init.
-Do not put production keys in it.
+`--remote` exists because a machine outside the VPC cannot reach the cluster or
+the gateway: the CCE API has no public endpoint and the ELB is private. The
+bastion is the only host with a public IP, so in-cluster stages run there. It
+needs only `kubectl` and `helm` — no Terraform, no AK/SK.
 
-### Production tier (CCE, HA)
-
-```bash
-export HW_ACCESS_KEY=... HW_SECRET_KEY=...
-
-cp terraform/examples/cce-ha/terraform.tfvars.example terraform/examples/cce-ha/terraform.tfvars
-$EDITOR terraform/examples/cce-ha/terraform.tfvars
-#   - elb_ingress_cidrs: your egress range
-#   - certificate_id + enable_https = true
-#   - region-specific flavor codes
-
-make plan          # review: ~60 resources, CCE is the slow one
-make apply         # 20-40 minutes, mostly CCE
-make app-deploy    # kubeconfig + Secret + helm upgrade (runs migrations first)
-make smoke         # liveness, readiness, /v1/models
-```
-
-`make app-deploy` writes the kubeconfig to `~/.kube/litellm-cce.yaml` (mode
-0600), creates the `litellm` namespace, builds the application Secret from the
-Terraform outputs, and installs the chart with the ELB annotations.
-
-Add provider keys without touching Helm values:
+Model endpoints and their keys are declared in `deploy-inputs.yaml`
+(`models[]`); the keys themselves live in `secrets/app.env` (gitignored) and are
+referenced by `api_key_env`. A simple example:
 
 ```bash
 cat > secrets/app.env <<'EOF'
-OPENAI_API_KEY=sk-...
-MODELARTS_API_BASE=https://<maas-endpoint>/v1
-MODELARTS_API_KEY=...
+GLM_API_KEY=sk-...
+DEEPSEEK_API_KEY=
 EOF
-make app-deploy
 ```
+
+Empty means "this endpoint does not authenticate". Never put a key in
+`deploy-inputs.yaml`.
+
+### Lab tier (single VM, ~10 minutes) — evaluation only
+
+```bash
+cp terraform/examples/vm-single/terraform.tfvars.example terraform/examples/vm-single/terraform.tfvars
+$EDITOR terraform/examples/vm-single/terraform.tfvars  # set allowed_ingress_cidrs
+
+terraform -chdir=terraform/examples/vm-single init
+terraform -chdir=terraform/examples/vm-single apply
+```
+
+The instance installs Docker, starts PostgreSQL 16, Redis 7 and LiteLLM, and
+serves `http://<eip>:4000`. Single point of failure, plain HTTP, secrets via
+cloud-init — do not put production keys in it, and do not expect it to match the
+HA tier's behaviour.
+
 
 The master key is in CSMS and in `terraform output`:
 
@@ -178,8 +180,7 @@ terraform/
   examples/
     cce-ha/       production: CCE + ELB + RDS + DCS
     vm-single/    lab: one ECS with local PostgreSQL and Redis
-charts/litellm/   Helm chart (migration hook, PDB, probes, topology spread)
-config/           single source of truth for litellm-config.yaml
+charts/litellm/   Helm chart (migration hook, PDB, probes, topology spread; config rendered)
 scripts/          deploy, migrate, smoke test, image mirroring, destroy
 docs/             architecture, deployment, operations, security, cost, regions, checklist
 monitoring/       AOM alert rules + Grafana dashboard + wiring guide
@@ -219,6 +220,9 @@ The first `terraform plan` in your account is the real acceptance test.
 | [docs/operations.md](docs/operations.md) | Scaling, upgrades, rollback, backup/restore, key rotation |
 | [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM, who calls the gateway |
 | [docs/sa-checklist.md](docs/sa-checklist.md) | Tick-box planning checklist: network, egress, data, encryption, go-live |
+| [docs/inputs-guide.md](docs/inputs-guide.md) | How to fill the inputs, how to write the model list |
+| [docs/manual-deployment.md](docs/manual-deployment.md) | Console click-through when Terraform is not allowed |
+| [docs/upgrade-procedure.md](docs/upgrade-procedure.md) | What a version bump actually requires |
 | [monitoring/README.md](monitoring/README.md) | LTS logs, AOM metrics, alert rules, local Grafana |
 | [skills/litellm-huaweicloud-deploy/SKILL.md](skills/litellm-huaweicloud-deploy/SKILL.md) | Agent skill: staged flow, bastion handoff, failure routing |
 | [monitoring/alerting-rules.yaml](monitoring/alerting-rules.yaml) | AOM alert rules (availability, latency, errors, saturation) |

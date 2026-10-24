@@ -46,56 +46,55 @@ flowchart LR
   NAT --> EXT["外部模型 API"]
 ```
 
-请求路径：客户端 → EIP → ELB（TLS）→ Service → 三个 Pod 之一 → 经 NAT 或
-ModelArts VPCEP 调用模型。Pod 无状态，需要跨故障保留的数据都在 RDS/Redis。
+请求路径：客户端（业务子网）→ 内网 ELB → Service → 三个 Pod 之一 → 经 NAT 或
+ModelArts VPCEP 调用模型。集群外唯一入口是堡垒机（公网 EIP），它只用于
+helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RDS/Redis。
 
 ## 快速开始
 
-### 单机版（约 10 分钟，仅用于评估）
+### 生产版（CCE 高可用）——受支持的路径
 
 ```bash
 export HW_ACCESS_KEY=... HW_SECRET_KEY=...   # 专用 IAM 用户，不要用主账号
-cp terraform/examples/vm-single/terraform.tfvars.example terraform/examples/vm-single/terraform.tfvars
-$EDITOR terraform/examples/vm-single/terraform.tfvars   # 改 allowed_ingress_cidrs
+$EDITOR deploy-inputs.yaml                   # 唯一需要改的文件
 
-make plan  TF_DIR=terraform/examples/vm-single
-make apply TF_DIR=terraform/examples/vm-single
+./scripts/deploy.sh preflight   # 校验参数并渲染 out/
+./scripts/deploy.sh plan        # 生成 plan，不做任何变更
+#   ◄── 人工看完 plan 再继续
+./scripts/deploy.sh apply-infra # 20–40 分钟，主要是 CCE
+./scripts/deploy.sh --remote deploy-app   # 在堡垒机上跑 helm
+./scripts/deploy.sh --remote verify       # 在堡垒机上做 smoke
 ```
 
-实例会自动装 Docker，启动 PostgreSQL 16、Redis 7 和 LiteLLM，访问
-`http://<eip>:4000`。这一档是单点、明文 HTTP、密钥经 cloud-init 下发，
-**不要放生产 Key**。
+`--remote` 的原因：VPC 外的机器既连不上集群（CCE 无公网端点），也访问不到
+网关（ELB 是私网）。堡垒机是唯一有公网 IP 的主机，所以集群内动作都在那里执行，
+它只需要 `kubectl` 和 `helm`，不需要 Terraform 和 AK/SK。
 
-### 生产版（CCE 高可用）
-
-```bash
-export HW_ACCESS_KEY=... HW_SECRET_KEY=...
-
-cp terraform/examples/cce-ha/terraform.tfvars.example terraform/examples/cce-ha/terraform.tfvars
-$EDITOR terraform/examples/cce-ha/terraform.tfvars
-#   elb_ingress_cidrs 改成你的出口网段
-#   certificate_id + enable_https = true
-#   按 region 核对规格编码
-
-make plan          # 约 60 个资源，重点看 CCE/RDS
-make apply         # 20-40 分钟，主要是 CCE
-make app-deploy    # 生成 kubeconfig、创建 Secret、helm 安装（先跑迁移）
-make smoke         # 存活、就绪、/v1/models
-```
-
-`make app-deploy` 会把 kubeconfig 写到 `~/.kube/litellm-cce.yaml`（0600），
-创建命名空间和 Secret，用 Terraform 输出拼出 ELB 注解，再执行 Helm 安装。
-
-Provider Key 放 `secrets/app.env`（已 gitignore）：
+模型端点和 KEY 分开管理：端点写在 `deploy-inputs.yaml` 的 `models[]`，KEY 写在
+`secrets/app.env`（已 gitignore），YAML 里只用 `api_key_env` 引用变量名：
 
 ```bash
 cat > secrets/app.env <<'EOF'
-OPENAI_API_KEY=sk-...
-MODELARTS_API_BASE=https://<endpoint>/v1
-MODELARTS_API_KEY=...
+GLM_API_KEY=sk-...
+DEEPSEEK_API_KEY=
 EOF
-make app-deploy
 ```
+
+留空表示该端点免认证。**不要把 KEY 写进 `deploy-inputs.yaml`。**
+
+### 单机版（vm-single，约 10 分钟）——仅评估
+
+```bash
+cp terraform/examples/vm-single/terraform.tfvars.example terraform/examples/vm-single/terraform.tfvars
+$EDITOR terraform/examples/vm-single/terraform.tfvars   # 改 allowed_ingress_cidrs
+
+terraform -chdir=terraform/examples/vm-single init
+terraform -chdir=terraform/examples/vm-single apply
+```
+
+实例会自动装 Docker，启动 PostgreSQL 16、Redis 7 和 LiteLLM，访问
+`http://<eip>:4000`。单点、明文 HTTP、密钥经 cloud-init 下发，
+**不要放生产 Key**，也不要指望它和生产版行为一致。
 
 主密钥在 CSMS 和 Terraform 输出里：
 
@@ -130,12 +129,13 @@ terraform -chdir=terraform/examples/cce-ha output -json app_env | jq -r .LITELLM
 ## 目录结构
 
 ```
-terraform/modules/   network postgres redis cce elb observability vpn vpcep
+terraform/modules/   naming maas-network bastion cce elb postgres redis observability vpn vpcep
 terraform/examples/  cce-ha（生产） vm-single（单机实验）
-charts/litellm/      Helm chart（迁移 hook、PDB、探针、拓扑打散）
-config/              litellm-config.yaml 唯一来源
+charts/litellm/      Helm chart（迁移 hook、PDB、探针、拓扑打散；config 由 values + 参数渲染）
 scripts/             部署、迁移、冒烟、镜像同步、销毁
 docs/                架构、部署、运维、安全、成本、排障、Region 对照
+monitoring/          AOM 告警规则 + Grafana 看板 + 接入说明
+skills/              agent skill（部署流程），`make skill-install` 安装
 ```
 
 ## 验证状态
@@ -166,7 +166,15 @@ docs/                架构、部署、运维、安全、成本、排障、Regio
 | [docs/architecture.md](docs/architecture.md) | 组件、故障域、请求链路、升级流程 |
 | [docs/deployment.md](docs/deployment.md) | 前置条件、IAM、凭据、逐步部署 |
 | [docs/operations.md](docs/operations.md) | 扩缩容、升级、回滚、备份恢复、密钥轮换 |
-| [docs/security.md](docs/security.md) | 密钥、网络、TLS、镜像验签、IAM |
+| [docs/security.md](docs/security.md) | 密钥、网络、TLS、镜像验签、IAM、谁可以调用 |
+| [docs/sa-checklist.md](docs/sa-checklist.md) | 可勾选的规划清单：网络、外网边界、数据、加密、上线 |
+| [docs/inputs-guide.md](docs/inputs-guide.md) | 参数怎么填，模型列表怎么写 |
+| [docs/manual-deployment.md](docs/manual-deployment.md) | 不用 Terraform 时的手工控制台步骤 |
+| [docs/upgrade-procedure.md](docs/upgrade-procedure.md) | 版本升级必须走的流程 |
+| [monitoring/README.md](monitoring/README.md) | LTS 日志、AOM 指标、告警导入、本机 Grafana |
+| [monitoring/alerting-rules.yaml](monitoring/alerting-rules.yaml) | AOM 告警规则（可用性/延迟/错误/饱和） |
+| [monitoring/grafana-dashboard.json](monitoring/grafana-dashboard.json) | Grafana 看板（对接 AOM 的 Prometheus 端点） |
+| [skills/litellm-huaweicloud-deploy/SKILL.md](skills/litellm-huaweicloud-deploy/SKILL.md) | agent skill：阶段流程、堡垒机交接、故障路由 |
 | [docs/cost.md](docs/cost.md) | 资源清单、参考价格、降本手段 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 现象 → 原因 → 处理 |
 | [docs/modelarts-intranet.md](docs/modelarts-intranet.md) | 通过 VPCEP 私网调用 ModelArts |

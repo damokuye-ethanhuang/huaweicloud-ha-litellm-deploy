@@ -24,8 +24,8 @@
    keeps pods with a broken database connection out of rotation.
 4. The pod authenticates the virtual key. Authentication and spend metadata come
    from PostgreSQL; rate-limit counters and the response cache come from Redis.
-5. The router selects a model deployment (retries and fallbacks are configured
-   in `config/litellm-config.yaml`).
+5. The router selects a model deployment; retries and fallbacks come from
+   `deploy-inputs.yaml` (`models[]`) via `router_settings` in the rendered config.
 6. The request leaves through the NAT gateway, or through the ModelArts VPC
    endpoint when private inference is enabled.
 

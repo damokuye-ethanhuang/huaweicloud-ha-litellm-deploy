@@ -113,11 +113,17 @@ If the key was rotated, update the Secret and restart the deployment.
 
 ### Redis errors after enabling TLS
 
-`dcs_ssl_enable = true` requires the cache config to use TLS as well. Uncomment
-`ssl: true` under `litellm_settings.cache_params` in
-`config/litellm-config.yaml`, run `make sync-config`, and redeploy. The router
-`redis_host`/`redis_port` block has no separate TLS switch; use the cache block
-for TLS and leave the router on the plain endpoint only if DCS allows it.
+`dcs_ssl_enable = true` requires the cache config to use TLS as well: the chart
+renders `litellm_settings.cache_params` with TLS when `REDIS_SSL=true`, which the
+Secret already carries from the Terraform outputs. If Redis errors persist,
+confirm the pod actually received the variable:
+
+```bash
+kubectl -n litellm exec deploy/litellm -- printenv REDIS_SSL
+```
+
+Set `redis_ssl_enable = false` in `deploy-inputs.yaml` only if DCS is configured
+without TLS; mixing the two is the usual cause of `redis: disconnected`.
 
 ### Provider credentials stopped working
 
