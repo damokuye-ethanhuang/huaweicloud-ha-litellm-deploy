@@ -33,7 +33,10 @@ step "helm template"
 helm template litellm charts/litellm --namespace litellm --set existingSecret=ci-secret >/dev/null || fail=1
 
 if command -v shellcheck >/dev/null 2>&1; then
-  step "shellcheck"
+  step "monitoring"
+python3 ./scripts/check-monitoring.py || fail=1
+
+step "shellcheck"
   shellcheck -x scripts/*.sh terraform/examples/vm-single/templates/start.sh || fail=1
 else
   step "shellcheck (skipped: not installed)"

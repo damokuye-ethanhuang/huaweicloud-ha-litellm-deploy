@@ -1,0 +1,200 @@
+# AOM alerting rules for the LiteLLM gateway.
+#
+# Import: AOM console → 告警管理 → 告警规则 → 导入, or create them through the
+# AOM API. One rule per file section keeps failures isolated: an unsupported
+# metric only rejects its own rule.
+#
+# Metric names follow LiteLLM's Prometheus exporter on :4000/metrics. AOM
+# stores them as CCE custom metrics; `litellm_` keeps that prefix so the
+# Grafana dashboard in this directory can use the same names.
+#
+# Thresholds are starting points sized for 3 replicas / one 4C8G worker per AZ.
+# Re-tune after you have a week of real traffic — do not treat them as SLA.
+
+namespace: litellm
+cluster: ${PROJECT_NAME}-maas-cce
+
+rules:
+  # ---------------------------------------------------------------- availability
+  - name: litellm-gateway-down
+    description: No gateway pod is reporting up for 2 minutes — every caller is failing.
+    severity: critical
+    metric: litellm_up
+    aggregation: min
+    window: 2m
+    comparison: "<"
+    threshold: 1
+    for: 2m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#all-replicas-down
+
+  - name: litellm-readiness-failing
+    description: Readiness probe failing on some replicas — usually the database or Redis is gone.
+    severity: critical
+    metric: kube_pod_status_ready
+    label_filter:
+      namespace: litellm
+      condition: "false"
+    aggregation: sum
+    window: 5m
+    comparison: ">"
+    threshold: 0
+    for: 5m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#readiness-503-db-disconnected
+
+  # ---------------------------------------------------------------- latency
+  # LiteLLM exposes provider latency as a histogram. p95 over 60s against a
+  # 1500s end-to-end budget: 60s is the point where interactive callers notice.
+  - name: litellm-request-latency-high
+    description: p95 request latency above 60s for 10 minutes — provider slowdown or pool exhaustion.
+    severity: warning
+    metric: litellm_request_total_latency_metric
+    metric_type: histogram
+    aggregation: p95
+    window: 10m
+    comparison: ">"
+    threshold: 60
+    unit: s
+    for: 10m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#requests-are-slow
+
+  # ---------------------------------------------------------------- errors
+  - name: litellm-failure-rate-high
+    description: More than 5% of requests are failing over a 10 minute window.
+    severity: warning
+    metric: litellm_request_total_failures_metric
+    metric_type: counter
+    aggregation: rate
+    window: 10m
+    comparison: ">"
+    threshold: 0.05
+    unit: ratio
+    for: 10m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#all-replicas-down
+
+  - name: litellm-fallbacks-firing
+    description: Fallbacks are being used continuously — the primary model is unhealthy.
+    severity: warning
+    metric: litellm_fallback_responses_metric
+    metric_type: counter
+    aggregation: rate
+    window: 15m
+    comparison: ">"
+    threshold: 0
+    for: 15m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#fallbacks-are-firing
+
+  # ---------------------------------------------------------------- saturation
+  # This is the one that predicts an outage before users see it: requests
+  # waiting for a free worker slot while every replica is at its cap.
+  - name: litellm-queueing-requests
+    description: Requests are queued behind the parallel-request cap for 5 minutes — add replicas or raise the cap.
+    severity: warning
+    metric: litellm_remaining_requests_metric
+    aggregation: min
+    window: 5m
+    comparison: "<="
+    threshold: 0
+    for: 5m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#requests-are-slow
+
+  - name: litellm-worker-saturated
+    description: Worker CPU above 85% for 10 minutes; a single-request worker at CPU cap adds latency fast.
+    severity: warning
+    metric: container_cpu_usage_seconds_total
+    metric_type: counter
+    label_filter:
+      namespace: litellm
+    aggregation: rate
+    window: 10m
+    comparison: ">"
+    threshold: 0.85
+    unit: cores
+    for: 10m
+    notify: smn-default
+    runbook: docs/cost.md
+
+  - name: litellm-pod-restarting
+    description: A gateway pod restarted more than once in 30 minutes — check for OOM kills.
+    severity: warning
+    metric: kube_pod_container_status_restarts_total
+    label_filter:
+      namespace: litellm
+    aggregation: increase
+    window: 30m
+    comparison: ">"
+    threshold: 1
+    for: 5m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#pods-crashloopbackoff-with-oomkilled
+
+  # ---------------------------------------------------------------- dependencies
+  - name: litellm-db-connection-failures
+    description: Database connection errors are being logged — pool exhausted or RDS failover in progress.
+    severity: critical
+    metric: litellm_db_connection_errors
+    metric_type: counter
+    aggregation: rate
+    window: 5m
+    comparison: ">"
+    threshold: 0
+    for: 5m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#readiness-503-db-disconnected
+
+  - name: litellm-redis-connection-failures
+    description: Redis errors — routing/rate-limit state is degraded, requests may re-route to random replicas.
+    severity: warning
+    metric: litellm_redis_connection_errors
+    metric_type: counter
+    aggregation: rate
+    window: 5m
+    comparison: ">"
+    threshold: 0
+    for: 5m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#redis-errors-after-enabling-tls
+
+  - name: rds-cpu-high
+    description: RDS PostgreSQL CPU above 80% for 10 minutes — the spend log writer is usually the cause.
+    severity: warning
+    metric: rds_cpu_util
+    aggregation: avg
+    window: 10m
+    comparison: ">"
+    threshold: 80
+    unit: percent
+    for: 10m
+    notify: smn-default
+    runbook: docs/operations.md#scaling
+
+  - name: rds-connections-near-limit
+    description: Database connections above 80% of max_connections — every new pod adds a pool.
+    severity: critical
+    metric: rds_connections_usage
+    aggregation: avg
+    window: 5m
+    comparison: ">"
+    threshold: 80
+    unit: percent
+    for: 5m
+    notify: smn-default
+    runbook: docs/troubleshooting.md#too-many-database-connections
+
+  - name: dcs-memory-high
+    description: Redis memory above 80% — evictions will start dropping routing state.
+    severity: warning
+    metric: dcs_memory_usage
+    aggregation: avg
+    window: 10m
+    comparison: ">"
+    threshold: 80
+    unit: percent
+    for: 10m
+    notify: smn-default
+    runbook: docs/operations.md#scaling

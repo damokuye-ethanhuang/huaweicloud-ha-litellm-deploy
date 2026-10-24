@@ -30,6 +30,37 @@ Rules that are enforced by the code:
 - **`.gitignore` blocks** `*.tfvars`, `*.auto.tfvars`, `*.pem`, `*.key`,
   `secrets.yaml`, `.env` and kubeconfigs.
 
+## Who calls the gateway
+
+The master key is an admin credential: it can create keys, read spend logs and
+list every model. Never hand it to a calling application. Bootstrapping is two
+steps:
+
+```bash
+# 1. Ops does this once, from the bastion, with the master key
+MASTER=$(terraform -chdir=terraform/examples/cce-ha output -json app_env | jq -r .LITELLM_MASTER_KEY)
+
+curl -s "http://<gateway-vip>/key/generate" \
+  -H "Authorization: Bearer $MASTER" \
+  -H 'Content-Type: application/json' \
+  -d '{"key_alias":"app-prod","models":["glm-5.3","deepseek-v4.1-flash"],
+       "metadata":{"owner":"<team>"}}' | jq -r .key
+
+# 2. Give that sk-... to the application, and only that
+```
+
+One key per calling application, `models` narrowed to what that application
+actually needs. When a key leaks you revoke one key instead of rotating the
+master key and redeploying every consumer.
+
+This stack does not use LiteLLM budgeting or rate limiting — keys are for
+model-scoped authorization, not billing. Keep `models` tight anyway: it is the
+only thing preventing one team from consuming another team's model quota.
+
+Provider credentials are encrypted with `LITELLM_SALT_KEY`. Rotating the salt
+makes every stored provider key unreadable, so it is `prevent_destroy` and
+belongs in your backup runbook alongside the database.
+
 The Terraform state still contains the generated passwords. Treat it as a
 secret: private OBS bucket, server-side encryption, restricted IAM, and no
 state files on laptops longer than necessary.

@@ -181,7 +181,8 @@ terraform/
 charts/litellm/   Helm chart (migration hook, PDB, probes, topology spread)
 config/           single source of truth for litellm-config.yaml
 scripts/          deploy, migrate, smoke test, image mirroring, destroy
-docs/             architecture, deployment, operations, security, cost, regions
+docs/             architecture, deployment, operations, security, cost, regions, checklist
+monitoring/       AOM alert rules + Grafana dashboard + wiring guide
 ```
 
 ## Validation status
@@ -215,7 +216,11 @@ The first `terraform plan` in your account is the real acceptance test.
 | [docs/architecture.md](docs/architecture.md) | Components, failure domains, request path, upgrade flow |
 | [docs/deployment.md](docs/deployment.md) | Prerequisites, IAM, credentials, step-by-step deploy |
 | [docs/operations.md](docs/operations.md) | Scaling, upgrades, rollback, backup/restore, key rotation |
-| [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM |
+| [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM, who calls the gateway |
+| [docs/sa-checklist.md](docs/sa-checklist.md) | Tick-box planning checklist: network, egress, data, encryption, go-live |
+| [monitoring/README.md](monitoring/README.md) | LTS logs, AOM metrics, alert rules, local Grafana |
+| [monitoring/alerting-rules.yaml](monitoring/alerting-rules.yaml) | AOM alert rules (availability, latency, errors, saturation) |
+| [monitoring/grafana-dashboard.json](monitoring/grafana-dashboard.json) | Grafana dashboard for AOM's Prometheus endpoint |
 | [docs/cost.md](docs/cost.md) | Resource list, reference prices, cost levers |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Symptom → cause → fix |
 | [docs/modelarts-intranet.md](docs/modelarts-intranet.md) | Calling ModelArts over a VPC endpoint |

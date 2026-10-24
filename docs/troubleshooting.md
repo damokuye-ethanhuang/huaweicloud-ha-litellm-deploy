@@ -125,6 +125,81 @@ Someone changed `LITELLM_SALT_KEY`. It encrypts provider credentials in the
 database; restoring the previous value is the only fix. If it is lost, re-enter
 every provider credential in the Admin UI.
 
+### All replicas down
+
+Every pod is failing readiness, or none exists. Check in this order — each step
+rules out one layer:
+
+```bash
+kubectl -n litellm get pods -o wide          # are pods even scheduled?
+kubectl -n litellm describe pod <pod>        # Events: ImagePull, probes, OOM
+kubectl -n litellm logs deploy/litellm --previous --tail=80
+```
+
+| What you see | Cause | Fix |
+|---|---|---|
+| `0/3 nodes available` | nodes full or NotReady | `kubectl get nodes`, check worker status and disk |
+| `CreateContainerConfigError` | referenced Secret missing or missing key | recreate the Secret with `deploy-app.sh` |
+| `ImagePullBackOff` | image not mirrored / pull secret wrong | see the ImagePullBackOff section above |
+| Exits immediately with a Pydantic error | rendered config is invalid for this LiteLLM version | check the migration job logs; re-render via preflight |
+
+LiteLLM refuses to start when the config cannot be parsed, so a config error
+looks identical to a crash loop. Always read `--previous` logs before touching
+the deployment.
+
+### Requests are slow
+
+Separate provider latency from gateway saturation before changing anything:
+
+```bash
+kubectl -n litellm port-forward deploy/litellm 4000:4000 &
+curl -s localhost:4000/metrics | grep -E 'remaining_requests|latency_metric_count'
+```
+
+- `litellm_remaining_requests_metric` at or near 0 → **saturation**. Requests
+  are queued behind `max_parallel_requests`. Add a replica (`kubectl -n litellm
+  scale deploy/litellm --replicas=4`) or raise the per-worker cap in
+  `deploy-inputs.yaml`.
+- Remaining slots healthy but P95 high → **provider**. Check whether the
+  fallback rate rose at the same time. Long-context prompts streaming thousands
+  of tokens legitimately take minutes; compare against the model's own metrics
+  before blaming the gateway.
+- Both fine but callers complain → look at `latency` per request in LTS; a
+  single pathological prompt can dominate the average without moving P95.
+
+### Fallbacks are firing
+
+A non-zero `litellm_fallback_responses_metric` rate means the primary model is
+failing and traffic is being served by the secondary. The gateway is still up —
+this alert is about the model backends, not the pods.
+
+```bash
+curl -s http://<gateway-vip>/v1/models -H "Authorization: Bearer $MASTER" | jq
+kubectl -n litellm logs deploy/litellm --tail=200 | grep -i 'fallback\|cooldown'
+```
+
+Look for `cooldown` entries naming the primary: a model that fails
+`allowed_fails` times enters cooldown and is skipped for `cooldown_time`. Fix
+the provider (quota, key, endpoint reachability from the app subnet), then wait
+out the cooldown. Do **not** disable fallbacks to silence the alert.
+
+### Too many database connections
+
+Each pod opens a pool of `database_connection_pool_limit`. Three replicas at
+10 each plus the migration job is well under a default `max_connections`, but a
+scale-out or an HPA burst can cross it.
+
+```bash
+# on RDS: current usage
+psql -h <rds> -U litellm -d litellm -c \
+  "select count(*), state from pg_stat_activity group by state;"
+```
+
+Either lower `database_connection_pool_limit` in `deploy-inputs.yaml` and
+redeploy, or raise the RDS parameter group's `max_connections` and restart the
+instance. Prefer lowering the pool: the gateway does not need a large pool
+because requests are long and few, not short and many.
+
 ## Observability
 
 ### No logs in LTS

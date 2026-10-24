@@ -24,10 +24,10 @@ jobs:
         with:
           version: v3.16.3
 
-      - name: Install shellcheck and jq
+      - name: Install shellcheck, jq and python deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck jq
+          sudo apt-get install -y --no-install-recommends shellcheck jq python3-yaml
 
       - name: Cache Terraform providers
         run: mkdir -p "$RUNNER_TEMP/terraform-plugin-cache"

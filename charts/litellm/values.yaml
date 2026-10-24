@@ -168,7 +168,14 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-podAnnotations: {}
+# Prometheus scraping. CCE's AOM / kube-prometheus add-on discovers pods by
+# annotation, so both flags are needed: the CCE one for AOM, the standard one
+# for vanilla Prometheus. Set to {} to turn scraping off.
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "4000"
+  prometheus.io/path: "/metrics"
+  prometheus.io/allow: "true"
 podLabels: {}
 
 # The official image runs as root. Switch to the litellm-non_root image and set
