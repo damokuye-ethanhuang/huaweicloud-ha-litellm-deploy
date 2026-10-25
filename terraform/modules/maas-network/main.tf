@@ -100,10 +100,15 @@ locals {
         cidr      = var.app_subnet_cidr
         note      = "Redis from the app subnet only"
       }
-      # Overlay container network (tunnel mode): pod IPs come from the
-      # container CIDR (172.16.0.0/16 by default), NOT from the app subnet, so
-      # the app-subnet rules above do not cover them. Without these two, the
-      # gateway fails with "P1001: Can't reach database server".
+      # Overlay container network (tunnel mode): pods get IPs from the
+      # container CIDR but those IPs are NOT routable from the VPC - the node
+      # SNATs pod traffic to its own address, so the app-subnet rules above
+      # already cover the gateway. Only vpc-router and ENI (CCE Turbo) give
+      # pods VPC-visible addresses and need an explicit rule.
+      # Without this distinction the plan carries rules that can never match,
+      # which hides the real question during a connectivity incident.
+    },
+    (var.pod_cidr_ingress_enabled ? {
       "data-postgres-pods" = {
         sg_key    = "data"
         direction = "ingress"
@@ -111,7 +116,7 @@ locals {
         from      = 5432
         to        = 5432
         cidr      = var.pod_cidr
-        note      = "PostgreSQL from the overlay pod network"
+        note      = "PostgreSQL from pod IPs (vpc-router / ENI modes only)"
       }
       "data-redis-pods" = {
         sg_key    = "data"
@@ -120,8 +125,10 @@ locals {
         from      = 6379
         to        = 6379
         cidr      = var.pod_cidr
-        note      = "Redis from the overlay pod network"
+        note      = "Redis from pod IPs (vpc-router / ENI modes only)"
       }
+    } : {}),
+    {
       "data-egress" = {
         sg_key    = "data"
         direction = "egress"
@@ -256,6 +263,10 @@ resource "huaweicloud_vpc" "this" {
 # mapping; it is exported as app_subnet_neutron_id.
 data "huaweicloud_vpc_subnet" "app" {
   id = huaweicloud_vpc_subnet.this["app"].id
+}
+
+data "huaweicloud_vpc_subnet" "access" {
+  id = huaweicloud_vpc_subnet.this["access"].id
 }
 
 resource "huaweicloud_vpc_subnet" "this" {

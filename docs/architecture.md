@@ -19,16 +19,29 @@
 
 ## Network zones
 
-One VPC, `10.0.0.0/21`, carved into fixed slots so a typo fails the plan instead
+One VPC, `10.0.0.0/22`, carved into fixed slots so a typo fails the plan instead
 of silently overlapping something:
 
 | Subnet | CIDR | Holds | Ingress |
 |---|---|---|---|
-| access | /24 | Internal ELB VIP | `client_cidrs`, `admin_cidrs`, ops subnet |
-| app | /24 | CCE worker nodes | from access, from ops |
+| access (**接入子网 = CCE 前端子网**) | /24 | Internal ELB VIP, created by the Ingress controller | `client_cidrs`, `admin_cidrs`, ops subnet |
+| app (**应用子网 = ELB 后端子网**) | /24 | CCE worker nodes | from access, from ops |
 | data | /24 | RDS, DCS | 5432/6379 from app and ops only |
 | ops | /24 | The bastion, future jump hosts | SSH from `bastion_ssh_cidrs` |
 | vpce | /26 | ModelArts endpoint ENIs | optional, off by default |
+
+The container network is **not** a subnet. `overlay_l2` (container tunnel:
+VXLAN + Open vSwitch) gives pods addresses from `pod_cidr` (default
+`172.16.0.0/16`), allocated to nodes in /28 blocks. Those addresses are not
+routed by the VPC and pods cannot use EIPs or security groups, so:
+
+- pod-to-VPC traffic is source-NATed to the node address, which is why the data
+  subnet only allows the **app subnet** — no `pod_cidr` rule is generated;
+- nothing outside the cluster can reach a pod IP directly, so every entry point
+  is a Service or the Ingress;
+- the three ranges (VPC `10.0.0.0/22`, container `172.16.0.0/16`, service
+  `10.247.0.0/16`) must not overlap, and the plan rejects a container CIDR
+  inside the service range.
 
 The ops subnet is the one place that may reach everything in the VPC — ELB 443,
 PostgreSQL 5432, Redis 6379, the CCE API on 6443 — because that is where
@@ -38,8 +51,9 @@ debugging happens. Nothing else crosses zone boundaries.
 
 1. A client inside the VPC calls `https://<elb-vip>/v1/chat/completions` with a
    virtual key. There is no public path to this address.
-2. The ELB terminates TLS with the certificate referenced by the CCE Service
-   annotation and forwards to the Service's node port.
+2. The **CCE ELB Ingress controller** created that ELB from the Ingress
+   annotation `kubernetes.io/elb.autocreate` (dedicated, `type: inner`, L7). The
+   ELB terminates TLS and forwards to the Service's node port.
 3. kube-proxy picks one of the three pods. Readiness (`/health/readiness`) keeps
    pods with a broken database connection out of rotation.
 4. The pod authenticates the virtual key. Authentication and spend metadata come
@@ -48,6 +62,17 @@ debugging happens. Nothing else crosses zone boundaries.
    `deploy-inputs.yaml` (`models[]`) via `router_settings` in the rendered config.
 6. The request leaves through the NAT gateway, or through the ModelArts VPC
    endpoint when private inference is enabled.
+
+Terminology, because the two words are easy to swap: the **front / access
+subnet** is where the load balancer's VIP lives (`vip_subnet_cidr_id`), and the
+**backend / app subnet** is where the node ports it forwards to live
+(`elb_virsubnet_ids`). Putting the VIP in the app subnet works, but it collapses
+the blast radius: a client-facing address would share a subnet with the nodes.
+
+Terraform creates no ELB in `elb_mode = ingress` (the default). The load
+balancer lives and dies with the Ingress object, its VIP is read back from
+`kubectl -n litellm get ingress`, and `elb_mode = standalone` keeps the old
+Terraform-owned ELB for non-CCE deployments.
 
 ## Operations path
 

@@ -80,9 +80,23 @@ variable "private_key_pem" {
 }
 
 variable "deletion_protection" {
-  description = "Block accidental deletion of the load balancer."
+  description = <<-EOT
+    Block accidental deletion of the load balancer.
+
+    Defaults to false because the protection also blocks `terraform destroy`
+    with ELB.8917 "Deletion Protection of loadbalancer ... is enable" and there
+    is no provider field to disable it during teardown - it must be turned off
+    through the ELB API first. Set true for production once teardown is a
+    planned, manual operation.
+  EOT
   type        = bool
-  default     = true
+  default     = false
+}
+
+variable "vip_address" {
+  description = "Optional fixed VIP inside the subnet. Empty lets ELB pick one."
+  type        = string
+  default     = ""
 }
 
 variable "charging_mode" {

@@ -25,11 +25,15 @@
 | `project_name` | 所有资源名的前缀 | `litellmtest01` |
 | `owner` | 负责人/团队，写进标签 | `platform-team` |
 | `region` | 区域 | `cn-north-4` |
-| `vpc_cidr` | VPC 网段 | `10.0.0.0/21`（固定 /21，不能与本地数据中心重叠） |
+| `vpc_cidr` | VPC 网段 | `10.0.0.0/22`（切 4 个 /24 + 1 个 /26；不能与数据中心、对端 VPC 重叠） |
 | `subnet_app_cidr` 等 | access/app/data/ops 四个 /24 + 一个 /26 | 默认值可用，必须正好是 VPC 切出来的那几段 |
 | `subnet_ops_cidr` | 运维子网，堡垒机所在 | `10.0.3.0/24`；可访问 VPC 内全部服务 |
 | `client_cidrs` | 谁能调用网关 | `["10.20.0.0/16"]` |
-| `admin_cidrs` | 谁能进 Admin UI | `["10.20.10.0/24"]`（比上一条窄） |
+| `admin_cidrs` | 谁能进 Admin UI / 密钥 API | `["10.20.10.0/24"]`（比上一条窄）。**必须同时包含运维子网和接入子网**，否则堡垒机 curl 网关会挂住 |
+| `cce_container_network_type` | 容器网络模型 | `overlay_l2`（默认，隧道，不占 VPC 地址）；`vpc-router` / `eni` 为备选 |
+| `pod_cidr` | 容器网段 | `172.16.0.0/16`，必须与 VPC、Service `10.247.0.0/16` 都不重叠 |
+| `elb_mode` | 谁来创建 ELB | `ingress`（默认，CCE Ingress 自动建）；`standalone` 才由 Terraform 建 |
+| `elb_l7_flavor_name` | 独享型 ELB 的 L7 规格 | 测试 `L7_flavor.elb.s1.small`，生产按并发调大 |
 | `model_endpoint_mode` | 出网方式 | 纯内网选 `vpcep` |
 | `modelarts_vpce_service_id` | ModelArts 私网接入 ID | 控制台「内网接入」页复制 |
 | `tls_mode` | 传输加密方式 | 内网选 `internal_ca` |

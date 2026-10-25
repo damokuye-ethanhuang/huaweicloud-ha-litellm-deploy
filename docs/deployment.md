@@ -277,7 +277,7 @@ DRY_RUN=1 ./scripts/apply-staged.sh    # plan only
 
 | Stage | Creates | Why here |
 |---|---|---|
-| 1 `edge` | ELB + access log | Fastest (~10 s) and historically the riskiest wiring; fails in a minute instead of after the database. |
+| 1 `edge` | ELB + access log — **skipped when `elb_mode = ingress`** (the Ingress controller creates the ELB after `deploy-app`) | Fastest (~10 s) and historically the riskiest wiring; fails in a minute instead of after the database. |
 | 2 `data` | RDS primary/standby + `litellm` database | Longest lead time (~5 min); nothing downstream can be tested without it. |
 | 3 `compute` | 3 CCE worker nodes, one per AZ | Slow and complex (~10–15 min) but depends only on network + cluster. |
 | 4 `cache` | DCS Redis primary/standby | In-place update, quick. |
@@ -295,8 +295,10 @@ Outputs worth knowing:
 
 | Output | Meaning |
 |---|---|
-| `gateway_private_ip` | internal ELB VIP — point internal DNS here |
-| `gateway_url` | `http(s)://<vip>`, the caller-facing endpoint |
+| `gateway_private_ip` | internal ELB VIP — **empty/null in `elb_mode = ingress`**; read it from the Ingress |
+| `gateway_url` | `http(s)://<vip>`, the caller-facing endpoint; empty in ingress mode |
+| `elb_mode` | `ingress` (default) or `standalone`, so scripts and humans agree on who owns the ELB |
+| `ingress_elb` | the `elb.autocreate` parameters the chart renders: VIP subnet (**access**, the CCE front subnet), backend subnets (**app**), AZs, L7 flavor |
 | `bastion.public_ip` / `bastion.ssh` | the **only** public IP in the stack, plus a ready SSH command |
 | `cluster_id`, `kube_config_raw` | cluster access (sensitive) |
 | `database`, `redis` | connection details (sensitive) |
@@ -329,8 +331,11 @@ What it does, in order:
 1. writes `kube_config_raw` to `~/.kube/litellm-cce.yaml` (0600);
 2. creates the namespace and the `litellm-secrets` Secret from Terraform
    outputs, merged with any provider keys in `secrets/app.env` (gitignored);
-3. renders the values file with ELB annotations (id, class, protocol-port,
-   certificate);
+3. renders the values file (`scripts/render-helm-values.py`). In
+   `elb_mode = ingress` it writes `kubernetes.io/elb.autocreate` (dedicated,
+   `type: inner`, VIP in the **access** subnet, backends in the **app** subnet)
+   and keeps the Service at `ClusterIP`; in `standalone` it writes the ELB id,
+   class, protocol-port and certificate annotations instead;
 4. runs `helm upgrade --install --wait`. Helm executes the **SQL migration Job**
    first (`pre-install` / `pre-upgrade` hook, weight -5), waits for it, and only
    then replaces the Deployment — see [5.1](#51-tables-come-from-litellms-own-migrations-not-from-sql-in-this-repo);
@@ -342,6 +347,23 @@ Fix the cause and re-run; see [troubleshooting](troubleshooting.md).
 Provider keys: put them in `secrets/app.env` (never in `deploy-inputs.yaml`,
 never on a command line). A model whose `api_key_env` is missing from that file
 simply has no key — that is valid for endpoints that do not authenticate.
+
+### Where is the gateway VIP?
+
+With `elb_mode = ingress` there is no `terraform output` for it: the ELB comes
+into existence while the Ingress controller reconciles, minutes after the plan.
+Ask the cluster, not the state:
+
+```bash
+kubectl -n litellm get ingress \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}{"\n"}'
+```
+
+`./scripts/deploy.sh --remote verify` does exactly this, polling for up to five
+minutes before falling back to the API server. The address always belongs to the
+**access** subnet (the CCE front subnet); the ELB's backends are node ports on
+the **app** subnet. If `kubectl` shows the Ingress without an `ADDRESS`, the
+controller has not finished — see [troubleshooting](troubleshooting.md).
 
 ### 5.1 Tables come from LiteLLM's own migrations, not from SQL in this repo
 

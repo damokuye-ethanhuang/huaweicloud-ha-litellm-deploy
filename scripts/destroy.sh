@@ -20,6 +20,18 @@ if [ -f "$TF_DIR/terraform.tfstate" ]; then
   warn "state contains plaintext secrets (generated passwords). Destroy removes them from the cloud, not from backups of the state."
 fi
 
+# Fails fast instead of after 20 minutes of teardown: ELB.8917 leaves the VPC
+# half-deleted and the load balancer charging until someone clears the flag.
+if grep -qE '^[[:space:]]*elb_deletion_protection[[:space:]]*=[[:space:]]*true' "$TF_DIR/terraform.tfvars" 2>/dev/null; then
+  die "elb_deletion_protection = true will block destroy with ELB.8917. Set it to false and run 'terraform apply' once (it is an in-place update), then destroy."
+fi
+
+# The Ingress owns the ELB in the default mode: deleting the namespace first is
+# what removes the load balancer, and it keeps the VPC from hanging on an ENI.
+if grep -qE '^[[:space:]]*elb_mode[[:space:]]*=[[:space:]]*"ingress"' "$TF_DIR/terraform.tfvars" 2>/dev/null; then
+  log "elb_mode = ingress: the ELB is owned by the Ingress and disappears with the cluster; nothing extra to delete here"
+fi
+
 log "terraform destroy ($TF_DIR)"
 terraform -chdir="$TF_DIR" destroy -input=false
 ok "destroyed"

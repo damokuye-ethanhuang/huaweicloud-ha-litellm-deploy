@@ -81,9 +81,14 @@ variable "vpce_subnet_cidr" {
 }
 
 variable "pod_cidr" {
-  description = "CCE overlay container network CIDR. Must not overlap the VPC CIDR."
+  description = "CCE container network CIDR. Must not overlap the VPC CIDR or the service CIDR (10.247.0.0/16)."
   type        = string
   default     = "172.16.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.pod_cidr, 0)) && !startswith(var.pod_cidr, "10.247.")
+    error_message = "pod_cidr must be a valid CIDR and must not overlap the CCE service CIDR 10.247.0.0/16."
+  }
 }
 
 variable "allowed_client_cidrs" {
@@ -352,9 +357,14 @@ variable "cce_node_count_per_az" {
 }
 
 variable "cce_container_network_type" {
-  description = "vpc-router (default, VPC route based, no extra subnet), overlay_l2 or eni (CCE Turbo)."
+  description = "overlay_l2 (default, VXLAN tunnel: no VPC routes, no pod security groups), vpc-router or eni (CCE Turbo)."
   type        = string
-  default     = "vpc-router"
+  default     = "overlay_l2"
+
+  validation {
+    condition     = contains(["overlay_l2", "vpc-router", "eni"], var.cce_container_network_type)
+    error_message = "cce_container_network_type must be overlay_l2, vpc-router or eni."
+  }
 }
 
 variable "cce_node_root_volume_size" {
@@ -434,6 +444,50 @@ variable "dcs_ssl_enable" {
   description = "Enable TLS on DCS."
   type        = bool
   default     = false
+}
+
+variable "elb_vip_address" {
+  description = "Fixed VIP for the Terraform-owned ELB (elb_mode = standalone only). Empty lets ELB pick one."
+  type        = string
+  default     = ""
+}
+
+variable "elb_deletion_protection" {
+  description = <<-EOT
+    Enable deletion protection on the Terraform-owned ELB (elb_mode = standalone).
+
+    Keep it false for test stacks: with protection on, `terraform destroy`
+    fails with ELB.8917 and the load balancer must be unprotected through the
+    API first. Turn it on for production and flip it off before tearing down.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "elb_mode" {
+  description = <<-EOT
+    How the gateway's internal load balancer is created.
+
+    ingress    - the CCE ELB Ingress controller creates it from the Ingress
+                 annotation (kubernetes.io/elb.autocreate). Terraform owns no
+                 ELB object; the ELB lives and dies with the Ingress.
+    standalone - Terraform creates an ELB plus listener and the chart Service
+                 binds to it via kubernetes.io/elb.id. Kept for air-gapped or
+                 non-CCE deployments.
+  EOT
+  type        = string
+  default     = "ingress"
+
+  validation {
+    condition     = contains(["ingress", "standalone"], var.elb_mode)
+    error_message = "elb_mode must be ingress or standalone."
+  }
+}
+
+variable "elb_l7_flavor_name" {
+  description = "L7 flavor for the Ingress-created ELB. Only used when elb_mode = ingress. Lab default is the smallest dedicated L7 flavor; production usually needs L7_flavor.elb.s2.medium or larger."
+  type        = string
+  default     = "L7_flavor.elb.s1.small"
 }
 
 variable "elb_l7_flavor_id" {

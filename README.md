@@ -36,34 +36,39 @@ created, and the same modules are reusable from other projects.
 
 ```mermaid
 flowchart LR
-  subgraph Internet
-    C[OpenAI SDK / LangChain / curl]
-  end
+  subgraph VPC["VPC 10.0.0.0/22 · no public endpoint"]
+    C["Client in the VPC<br/>business subnet / peered VPC"]
+    C -->|HTTPS 443| ELB["Internal ELB<br/>created by the CCE Ingress"]
+    ELB --> ING["Ingress (ingressClassName: cce)"]
+    ING --> SVC["Service (ClusterIP)"]
 
-  C -->|HTTPS 443| EIP[EIP]
-  EIP --> ELB["ELB（独享型 · 弹性规格）"]
-  ELB --> SVC["K8s Service type=LoadBalancer"]
-
-  subgraph VPC["VPC 10.0.0.0/16"]
-    subgraph CCE["CCE Turbo · 3 masters"]
-      SVC --> P1["litellm pod · AZ-a"]
-      SVC --> P2["litellm pod · AZ-b"]
-      SVC --> P3["litellm pod · AZ-c"]
+    subgraph CCE["CCE · 3 masters · 3 workers, one per AZ"]
+      SVC --> P1["litellm pod · AZ-d"]
+      SVC --> P2["litellm pod · AZ-e"]
+      SVC --> P3["litellm pod · AZ-f"]
     end
+
     P1 & P2 & P3 --> RDS[("RDS PostgreSQL 16<br/>primary/standby")]
     P1 & P2 & P3 --> DCS[("DCS Redis 7<br/>primary/standby")]
     P1 & P2 & P3 --> LTS[LTS access logs]
-    P1 & P2 & P3 --> NAT[NAT gateway]
+    P1 & P2 & P3 -.->|optional, no NAT by default| NAT[NAT gateway]
   end
 
-  NAT --> MaaS["ModelArts / MaaS"]
-  NAT --> EXT["External LLM APIs"]
-  VPCE["VPCEP (optional)"] -.-> MaaS
+  OP["Operator PC"] -->|SSH 22| BAST["Bastion<br/>only EIP in the stack"]
+  BAST -.kubectl/helm.-> CCE
+  NAT -.-> MaaS["ModelArts / MaaS"]
+  NAT -.-> EXT["External LLM APIs"]
 ```
 
-Traffic path: client → EIP → ELB (TLS) → Service → one of three pods → model
-provider through NAT (or the ModelArts VPC endpoint). Pods hold no state; the
-database and Redis carry everything that must survive a pod or AZ failure.
+Pods run on the container tunnel network (`overlay_l2`, `172.16.0.0/16`), which
+the VPC does not route: pod traffic reaches PostgreSQL/Redis with the node's
+source address, so the data subnet only allows the app subnet. The ModelArts
+VPC endpoint (optional) is the only other egress path.
+
+Traffic path: client inside the VPC → internal ELB (TLS, created by the Ingress)
+→ Service → one of three pods → model provider through NAT (or the ModelArts VPC
+endpoint). Pods hold no state; the database and Redis carry everything that must
+survive a pod or AZ failure.
 
 ## Quick start
 
@@ -224,6 +229,7 @@ The first `terraform plan` in your account is the real acceptance test.
 | Document | Contents |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Components, failure domains, request path, upgrade flow |
+| [docs/architecture.html](docs/architecture.html) | Rendered topology: subnets, request path, ELB ownership, known pitfalls (regenerate with `scripts/draw-architecture-html.py`) |
 | [docs/deployment.md](docs/deployment.md) | Prerequisites, IAM, credentials, step-by-step deploy |
 | [docs/operations.md](docs/operations.md) | Scaling, upgrades, rollback, backup/restore, key rotation |
 | [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM, who calls the gateway |

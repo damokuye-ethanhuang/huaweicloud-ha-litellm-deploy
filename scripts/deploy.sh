@@ -113,8 +113,10 @@ run_app() {
   terraform -chdir="$TF_DIR" output -raw kube_config_raw >"$KUBECONFIG_FILE"
   chmod 600 "$KUBECONFIG_FILE"
 
+  ELB_MODE="$(terraform_output "$TF_DIR" elb_mode)"
   ELB_ID="$(terraform_output "$TF_DIR" loadbalancer_id)"
   CERT_ID="$(terraform_output "$TF_DIR" certificate_id)"
+  INGRESS_ELB_JSON="$(terraform_output_json "$TF_DIR" ingress_elb)"
   APP_ENV_JSON="$(terraform_output_json "$TF_DIR" app_env)"
   IMAGE="$(terraform_output "$TF_DIR" litellm_image)"
 
@@ -143,29 +145,14 @@ run_app() {
 
   VALUES="$(mktemp)"
   trap 'rm -f "$VALUES"' EXIT
-  python3 - "$OUT_DIR/helm-values.yaml" "$VALUES" "$IMAGE" "$ELB_ID" "$CERT_ID" <<'PY'
-import sys
-import yaml
-
-src, dst, image, elb, cert = sys.argv[1:6]
-values = yaml.safe_load(open(src, encoding="utf-8")) or {}
-repo, _, tag = image.rpartition(":")
-values.setdefault("image", {})
-values["image"].update({"repository": repo, "tag": tag})
-annotations = {
-    "kubernetes.io/elb.id": elb,
-    "kubernetes.io/elb.class": "performance",
-    "kubernetes.io/elb.port": "443",
-}
-if cert:
-    annotations["kubernetes.io/elb.protocol-port"] = "https:443"
-    annotations["kubernetes.io/elb.cert-id"] = cert
-else:
-    annotations["kubernetes.io/elb.protocol-port"] = "http:443"
-values.setdefault("service", {})
-values["service"].update({"type": "LoadBalancer", "port": 443, "annotations": annotations})
-yaml.safe_dump(values, open(dst, "w", encoding="utf-8"), sort_keys=False)
-PY
+  python3 "$REPO/scripts/render-helm-values.py" \
+    --src "$OUT_DIR/helm-values.yaml" \
+    --dst "$VALUES" \
+    --image "$IMAGE" \
+    --mode "$ELB_MODE" \
+    --elb-id "$ELB_ID" \
+    --cert-id "$CERT_ID" \
+    --ingress-json "$INGRESS_ELB_JSON"
 
   log "helm upgrade --install (migration job runs first as a pre-install hook)"
   helm upgrade --install "$RELEASE" "$REPO/charts/litellm" \
@@ -179,6 +166,23 @@ PY
 run_verify() {
   require terraform kubectl curl jq
   ENDPOINT="$(terraform_output "$TF_DIR" gateway_url)"
+  if [ -z "$ENDPOINT" ]; then
+    # Ingress mode: the ELB - and therefore the VIP - only exists after the
+    # Ingress controller has reconciled, so read it back from the Ingress status
+    # instead of asking Terraform (which never created the ELB).
+    NAMESPACE="${NAMESPACE:-litellm}"
+    SCHEME="http"
+    if [ -n "$(terraform_output "$TF_DIR" certificate_id)" ]; then SCHEME="https"; fi
+    log "waiting for the Ingress to report its ELB VIP"
+    VIP=""
+    for _ in $(seq 1 60); do
+      VIP="$(kubectl -n "$NAMESPACE" get ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+      if [ -n "$VIP" ]; then break; fi
+      sleep 5
+    done
+    [ -n "$VIP" ] || die "the Ingress has no VIP after 5 minutes; check 'kubectl -n $NAMESPACE describe ingress'"
+    ENDPOINT="$SCHEME://$VIP"
+  fi
   log "verifying $ENDPOINT"
   "$REPO/scripts/smoke-test.sh" "$ENDPOINT" || die "smoke test failed; see docs/troubleshooting.md"
   ok "verification passed"

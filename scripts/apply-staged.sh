@@ -34,12 +34,23 @@ readonly PLAN_DIR="${PLAN_DIR:-$(repo_root)/.local/plans}"
 # Resource addresses per stage. Keep dependencies inside a stage, never across
 # two stages in the reverse direction: a stage must only reference things the
 # previous stages already created.
+elb_mode() {
+  # Read from the rendered tfvars: outputs do not exist yet at plan time.
+  sed -n 's/^elb_mode[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$EXAMPLE_DIR/terraform.tfvars" 2>/dev/null | tail -1
+}
+
 stage_targets() {
   case "$1" in
     edge)
       # Load balancer and its access log. Backend pools are added by the CCE
       # ingress controller later, so no node dependency here.
-      echo "module.elb huaweicloud_elb_log.this[0]"
+      # elb_mode = ingress means there is no ELB object to create: the Ingress
+      # controller owns it, so this stage has nothing to do.
+      if [ "$(elb_mode)" = "ingress" ]; then
+        echo ""
+      else
+        echo "module.elb"
+      fi
       ;;
     data)
       echo "module.postgres"
@@ -75,6 +86,11 @@ run_stage() {
   local stage="$1"
   local -a targets=() args=()
   read -r -a targets <<<"$(stage_targets "$stage")"
+
+  if [ "${#targets[@]}" -eq 0 ] || [ -z "${targets[0]:-}" ]; then
+    log "stage ${stage}: nothing to create in this mode (skipped)"
+    return 0
+  fi
 
   log "stage ${stage}: $(stage_title "$stage")"
 

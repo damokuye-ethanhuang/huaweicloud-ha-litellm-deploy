@@ -82,8 +82,11 @@ requires it. If you must stay on 1.9, avoid `-target` (run a flat
 
 `-target` needs a full resource address including the resource's own name, e.g.
 `module.cce.huaweicloud_cce_node.workers`, not `module.cce.huaweicloud_cce_node`
-(that is a type, not an address). `module.elb` / `module.postgres` work because
-those are module addresses.
+(that is a type, not an address). `module.postgres` always works because it is a module address.
+
+`module.elb` only works in `elb_mode = standalone`. With the default
+`elb_mode = ingress` that module has `count = 0`, and Terraform rejects the
+target with "no matching objects" — target `module.cce` instead.
 
 ## Application deployment
 

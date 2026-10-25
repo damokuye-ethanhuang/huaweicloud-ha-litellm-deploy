@@ -53,7 +53,7 @@ project:
     map_to: terraform.environment
 
   - key: owner
-    value: ""
+    value: "Ethan"
     required: true
     format: '.{2,40}'
     help: "负责团队或人，写入标签和告警通知。Team or owner recorded in tags."
@@ -186,9 +186,22 @@ network:
     value: 172.16.0.0/16
     required: true
     help: |
-      CCE overlay 容器网段（不占 VPC 地址，不需要新子网）。
-      必须与 VPC 10.0.0.0/21 不重叠。
+      CCE 容器网段（overlay 隧道网段，不占 VPC 地址，不需要新子网）。
+      必须同时不与 VPC 网段、Service 网段 10.247.0.0/16、以及对端网络重叠。
+      容器隧道模式下默认按 /28（16 个 IP）一块分给节点，/16 足够。
     map_to: terraform.container_network_cidr
+
+  - key: cce_container_network_type
+    value: overlay_l2
+    required: false
+    allowed: [overlay_l2, vpc-router, eni]
+    help: |
+      容器网络模型，默认 overlay_l2（容器隧道，VXLAN/OVS）。
+      overlay_l2：容器网段与 VPC 解耦，不占 VPC 路由配额，Pod 不能直接绑
+        EIP/安全组，Pod 出 VPC 时由节点做源地址转换，因此数据层只放行应用子网。
+      vpc-router：Pod 地址进入 VPC 路由表，能直接从 VPC 访问 Pod IP，受路由配额限制。
+      eni：CCE Turbo / 云原生网络 2.0，需要额外的 ENI 子网。
+    map_to: terraform.cce_container_network_type
 
 # -----------------------------------------------------------------------------
 # 访问控制 / Who may call the gateway
@@ -205,19 +218,42 @@ access:
     map_to: terraform.allowed_client_cidrs
 
   - key: admin_cidrs
-    value: ["10.0.3.0/24"]
+    value: ["10.0.3.0/24", "10.0.0.0/24"]
     required: true
     validate: cidr_private_v4_list
     help: |
       允许访问 Admin UI 与密钥管理 API 的网段，应比 client_cidrs 更窄。
-      保留默认值意味着只有堡垒机能打开管理界面。
+      必须同时包含运维子网（堡垒机所在）和接入子网（ELB VIP 所在）：
+      漏掉接入子网时，堡垒机 curl 网关会一直挂住而不报 403，很难定位。
     map_to: terraform.admin_access_cidrs
+
+  - key: elb_mode
+    value: ingress
+    required: false
+    allowed: [ingress, standalone]
+    help: |
+      负载均衡由谁创建。
+      ingress：由 CCE 的 ELB Ingress 控制器按 Ingress 注解
+        kubernetes.io/elb.autocreate 自动创建私网独享型 ELB，Terraform 不建 ELB，
+        ELB 随 Ingress 生命周期存在。推荐。
+      standalone：Terraform 创建 ELB + 监听器，Service 用 elb.id 绑定（非 CCE 场景保留）。
+    map_to: terraform.elb_mode
+
+  - key: elb_l7_flavor_name
+    value: L7_flavor.elb.s1.small
+    required_if: elb_mode=ingress
+    help: |
+      Ingress 自动创建的独享型 ELB 的 L7 规格。实验用最小规格 s1.small；
+      生产按 QPS 选择 L7_flavor.elb.s2.medium 及以上。
+    map_to: terraform.elb_l7_flavor_name
 
   - key: gateway_private_ip
     value: ""
     required: false
     help: |
-      内网 ELB 的虚拟 IP，留空由 ELB 分配。填固定值便于业务侧写死 DNS 记录。
+      仅 elb_mode=standalone 时有效：内网 ELB 的虚拟 IP，留空由 ELB 分配。
+      elb_mode=ingress 时 VIP 由 Ingress 控制器分配，部署后用
+      kubectl -n litellm get ingress 查看。
     map_to: terraform.elb_vip_address
 
   - key: bastion_enabled
@@ -479,9 +515,14 @@ sizing:
     map_to: terraform.cce_cluster_version
 
   - key: node_flavor
-    value: c7.xlarge.2
+    value: x1.8u16g
     required: true
-    help: "CCE 工作节点规格，每 AZ 一个节点池。规格编码随区域变化。"
+    help: |
+      CCE 工作节点规格，每 AZ 一个节点池。
+      关键看「可分配 CPU」而不是总核数：系统组件约占 3.25 核，
+      1 副本/AZ 是硬约束，4C 机型只剩 670m 装不下 1 核 Pod。
+      8C16G（x1.8u16g / ac8.2xlarge.2）已验证可跑；规格编码随区域变化，
+      下单前用 IMS/ECS 规格查询确认该区域有货。
     map_to: terraform.cce_node_flavor
 
   - key: cce_cluster_flavor

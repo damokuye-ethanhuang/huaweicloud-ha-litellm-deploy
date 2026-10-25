@@ -39,7 +39,7 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 | [ ] | `[必选]` VPC 网段不与对端冲突 | 要连 IDC / 其他 VPC 时先对齐网段，`/22` 起 | `preflight` |
 | [ ] | `[必选]` 三子网按角色拆分 | access / app / data，每段 `/24` | `preflight` |
 | [ ] | `[必选]` 数据子网只对应用子网开放 | RDS/DCS 安全组源为 app 网段，不是 `0.0.0.0/0` | `preflight` |
-| [ ] | `[必选]` 容器网络不与 VPC 网段重叠 | `vpc-router` 用的是节点 ENI 上的地址段，`pod_cidr` 必须避开 VPC 及对端网段 | `preflight` |
+| [ ] | `[必选]` 容器网段三选三不重叠 | `overlay_l2` 的 `pod_cidr`（默认 `172.16.0.0/16`）不能与 VPC `10.0.0.0/22`、Service `10.247.0.0/16`、对端网段重叠 | `preflight` / `terraform validate` |
 | [ ] | `[条件]` VPCE 子网 | 要访问 ModelArts/MaaS 私网端点时启用，`/27` 足够 | `preflight` |
 | [ ] | `[条件]` VPN / 专线 | 客户端在内网才需要；网段与 `client_cidrs` 对齐 | 人工 |
 
@@ -114,8 +114,8 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 | 项 | 默认 | 偏离原因 |
 |---|---|---|
 | 可用区数 | 3 | |
-| 节点规格 | `c7.xlarge.2` × 1/AZ | |
-| 容器网络 | `vpc-router`，不新建容器子网 | |
+| 节点规格 | `x1.8u16g`（8C16G）× 1/AZ，看可分配 CPU | |
+| 容器网络 | `overlay_l2`（容器隧道，VXLAN），容器网段 `172.16.0.0/16`，不占 VPC 路由 | |
 | 网关副本 | 3，`PDB minAvailable=2` | |
 | 外网暴露 | 仅堡垒机 EIP，网关零公网 | |
 | 数据层 | RDS PG 主备 + DCS Redis 主备 | |

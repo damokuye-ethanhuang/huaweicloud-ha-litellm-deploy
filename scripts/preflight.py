@@ -292,6 +292,67 @@ def check_subnet_overlaps(flat: dict[str, Any], report: Report) -> None:
         report.add("subnets", OK, f"{len(nets)} subnets, no overlap")
 
 
+def _net(value):
+    try:
+        return ipaddress.ip_network(str(value), strict=False)
+    except (ValueError, TypeError):
+        return None
+
+
+def check_container_cidr(flat: dict[str, Any], report: Report) -> None:
+    """Container CIDR must be disjoint from the VPC and the service range.
+
+    Overlaps are not rejected by CCE at create time; they show up later as
+    pods that cannot reach RDS or as a cluster that never becomes ready.
+    """
+    pod = _net(flat.get("pod_cidr", {}).get("value") or "172.16.0.0/16")
+    vpc = _net(flat.get("vpc_cidr", {}).get("value"))
+    service = ipaddress.ip_network("10.247.0.0/16")
+
+    if pod is None:
+        report.add("container-cidr", FAIL, "pod_cidr is not a valid CIDR")
+        return
+    clashes = [name for name, net in (("VPC", vpc), ("service", service)) if net and pod.overlaps(net)]
+    if clashes:
+        report.add(
+            "container-cidr",
+            FAIL,
+            f"pod_cidr {pod} overlaps the {' and '.join(clashes)} range; "
+            "the three ranges (VPC / container / service 10.247.0.0/16) must be disjoint",
+        )
+    else:
+        report.add("container-cidr", OK, f"container network {pod} is disjoint from VPC and service ranges")
+
+
+def check_admin_reach(flat: dict[str, Any], report: Report) -> None:
+    """The bastion is in the ops subnet and must be allowed on the gateway SG.
+
+    This is the failure that looks like 'the gateway is up but curl hangs': the
+    ELB security group only accepts admin_cidrs, and the ops/access subnets are
+    easy to forget because they are not part of 'the customer network'.
+    """
+    admin = [_net(v) for v in (flat.get("admin_cidrs", {}).get("value") or [])]
+    admin = [n for n in admin if n is not None]
+    targets = {
+        "ops subnet (bastion)": _net(flat.get("subnet_ops_cidr", {}).get("value")),
+        "access subnet (ELB VIP)": _net(flat.get("subnet_access_cidr", {}).get("value")),
+    }
+    missing = [
+        label
+        for label, target in targets.items()
+        if target is not None and not any(a.overlaps(target) for a in admin)
+    ]
+    if missing:
+        report.add(
+            "admin-reach",
+            WARN,
+            "admin_cidrs does not cover " + " or ".join(missing) +
+            "; the bastion will not reach the gateway (curl hangs, no 403)",
+        )
+    else:
+        report.add("admin-reach", OK, "admin_cidrs covers the ops and access subnets")
+
+
 # ---------------------------------------------------------------- rendering ---
 
 def hcl(v: Any) -> str:
@@ -340,11 +401,12 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "ops_subnet_cidr": v.get("subnet_ops_cidr"),
         "vpce_subnet_cidr": v.get("subnet_vpce_cidr"),
         "pod_cidr": v.get("pod_cidr") or "172.16.0.0/16",
-        # vpc-router: pods get addresses from the VPC route table, so no extra
-        # container subnet is needed and ELB can route to pods directly. This
-        # must match the Terraform variable default; rendering overlay_l2 here
-        # silently built a different network model than the docs describe.
-        "cce_container_network_type": "vpc-router",
+        # Must match the Terraform variable default (overlay_l2). Rendering a
+        # different model here silently builds a network the docs do not
+        # describe - that bug shipped once already.
+        "cce_container_network_type": v.get("cce_container_network_type") or "overlay_l2",
+        "elb_mode": v.get("elb_mode") or "ingress",
+        "elb_l7_flavor_name": v.get("elb_l7_flavor_name") or "L7_flavor.elb.s1.small",
         "cce_node_flavor": v.get("node_flavor"),
         "cce_cluster_flavor": v.get("cce_cluster_flavor") or "cce.s2.large",
         "cce_cluster_version": v.get("cce_cluster_version") or "",
@@ -500,10 +562,12 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 | 数据子网 | {v.get('subnet_data_cidr')} |
 | 运维子网 | {v.get('subnet_ops_cidr')}（堡垒机所在，可达 VPC 内全部服务） |
 | VPCE 子网 | {v.get('subnet_vpce_cidr')} |
-| 容器网段 | {v.get('pod_cidr') or '172.16.0.0/16'}（overlay，不占 VPC 地址） |
+| 容器网络 | `{v.get('cce_container_network_type') or 'overlay_l2'}`，网段 {v.get('pod_cidr') or '172.16.0.0/16'}（不占 VPC 地址、不走 VPC 路由） |
+| CCE 前端子网 | 接入子网 {v.get('subnet_access_cidr')}（ELB VIP 所在；后端在应用子网 {v.get('subnet_app_cidr')}） |
 | 允许调用 | {", ".join(v.get('client_cidrs') or []) or "(未填)"} |
 | 允许管理 | {", ".join(v.get('admin_cidrs') or []) or "(未填)"} |
-| 网关 VIP | {v.get('gateway_private_ip') or "由 ELB 分配"} |
+| ELB 来源 | {'Ingress 控制器自动创建（Terraform 不建）' if (v.get('elb_mode') or 'ingress') == 'ingress' else 'Terraform 直接创建'} |
+| 网关 VIP | {'apply 后由 Ingress 分配，从 kubectl 读' if (v.get('elb_mode') or 'ingress') == 'ingress' else (v.get('gateway_private_ip') or '由 ELB 分配')} |
 | 公网暴露 | **无**（内网 ELB，不绑 EIP） |
 
 ## 访问与出口 / Access and egress
@@ -636,6 +700,8 @@ def main() -> int:
 
     v = merged(flat)
     check_subnet_overlaps(flat, report)
+    check_container_cidr(flat, report)
+    check_admin_reach(flat, report)
     if not v.get("cce_cluster_version"):
         report.add("cce_cluster_version", WARN, "empty: resolved at deploy time via huaweicloudsdkcce (scripts/resolve-cce-version.py)")
     check_version(str(v.get("litellm_version", "")), report, bool(os.environ.get("ACK_UPGRADE")))

@@ -54,6 +54,7 @@ resource "huaweicloud_elb_loadbalancer" "this" {
   name                       = var.names["elb"]
   vpc_id                     = var.vpc_id
   ipv4_subnet_id             = var.subnet_id
+  ipv4_address               = var.vip_address == "" ? null : var.vip_address
   availability_zone          = var.availability_zones
   l7_flavor_id               = local.l7_flavor_id
   ipv4_eip_id                = var.internal ? null : huaweicloud_vpc_eip.this[0].id

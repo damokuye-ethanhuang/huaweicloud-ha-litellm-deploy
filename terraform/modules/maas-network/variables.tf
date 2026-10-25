@@ -62,9 +62,22 @@ variable "availability_zone" {
 }
 
 variable "pod_cidr" {
-  description = "Overlay container network CIDR. Pods in tunnel mode get IPs from here, so the data layer must allow it."
+  description = "Container network CIDR (overlay_l2 tunnel or vpc-router)."
   type        = string
   default     = "172.16.0.0/16"
+}
+
+variable "pod_cidr_ingress_enabled" {
+  description = <<-EOT
+    Open 5432/6379 to pod_cidr as well as to the app subnet.
+
+    True only when pods hold VPC-routable addresses (container_network_type
+    vpc-router or eni). With overlay_l2 the container IPs live behind VXLAN and
+    the node source-NATs pod traffic to its own address, so the app-subnet rules
+    are the ones that actually match.
+  EOT
+  type        = bool
+  default     = false
 }
 
 variable "client_cidrs" {

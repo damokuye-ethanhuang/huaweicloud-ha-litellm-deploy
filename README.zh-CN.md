@@ -31,23 +31,28 @@ LiteLLM 用一个 OpenAI 兼容端点统一 100+ 模型提供商，提供虚拟 
 
 ```mermaid
 flowchart LR
-  C[客户端] -->|HTTPS 443| EIP
-  EIP --> ELB["ELB 独享型 · 弹性规格"]
-  ELB --> SVC["K8s Service type=LoadBalancer"]
-  subgraph VPC["VPC 10.0.0.0/16"]
-    SVC --> P1["pod · AZ-a"]
-    SVC --> P2["pod · AZ-b"]
-    SVC --> P3["pod · AZ-c"]
+  C["VPC 内客户端<br/>业务子网 / 对等连接"] -->|HTTPS 443| ELB["内网 ELB<br/>由 CCE Ingress 自动创建"]
+  ELB --> ING["Ingress（ingressClassName: cce）"]
+  ING --> SVC["Service（ClusterIP）"]
+  subgraph VPC["VPC 10.0.0.0/22 · 无公网入口"]
+    SVC --> P1["pod · AZ-d"]
+    SVC --> P2["pod · AZ-e"]
+    SVC --> P3["pod · AZ-f"]
     P1 & P2 & P3 --> RDS[("RDS PG 16 主备")]
     P1 & P2 & P3 --> DCS[("DCS Redis 7 主备")]
-    P1 & P2 & P3 --> NAT[NAT]
+    P1 & P2 & P3 -.->|默认不开| NAT[NAT]
   end
-  NAT --> MaaS["ModelArts / MaaS"]
-  NAT --> EXT["外部模型 API"]
+  OP["运维 PC"] -->|SSH 22| BAST["堡垒机<br/>唯一公网 EIP"]
+  BAST -.kubectl/helm.-> P1
+  NAT -.-> MaaS["ModelArts / MaaS"]
+  NAT -.-> EXT["外部模型 API"]
 ```
 
-请求路径：客户端（业务子网）→ 内网 ELB → Service → 三个 Pod 之一 → 经 NAT 或
-ModelArts VPCEP 调用模型。集群外唯一入口是堡垒机（公网 EIP），它只用于
+Pod 运行在容器隧道网络（`overlay_l2`，`172.16.0.0/16`），VPC 不为该网段配路由：
+Pod 访问 RDS/Redis 时源地址被转换为节点地址，所以数据子网只放行应用子网。
+
+请求路径：VPC 内客户端 → 内网 ELB（TLS，由 Ingress 创建）→ Service → 三个 Pod 之一
+→ 经 NAT 或 ModelArts VPCEP 调用模型。集群外唯一入口是堡垒机（公网 EIP），它只用于
 helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RDS/Redis。
 
 ## 快速开始
@@ -170,6 +175,7 @@ skills/              agent skill（部署流程），`make skill-install` 安装
 | 文档 | 内容 |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | 组件、故障域、请求链路、升级流程 |
+| [docs/architecture.html](docs/architecture.html) | 可视化架构：子网、请求链路、ELB 归属、坑位索引（由 `scripts/draw-architecture-html.py` 生成） |
 | [docs/deployment.md](docs/deployment.md) | 前置条件、IAM、凭据、逐步部署 |
 | [docs/operations.md](docs/operations.md) | 扩缩容、升级、回滚、备份恢复、密钥轮换 |
 | [docs/security.md](docs/security.md) | 密钥、网络、TLS、镜像验签、IAM、谁可以调用 |

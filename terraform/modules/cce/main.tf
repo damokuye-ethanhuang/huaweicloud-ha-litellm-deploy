@@ -9,6 +9,11 @@ locals {
 
   is_turbo = var.container_network_type == "eni"
 
+  # cce.s2.* is the HA control plane (three masters). cce.s1.* is a single
+  # master, and passing a masters block to it is rejected, so the block is
+  # driven by the flavor and not by the AZ list alone.
+  is_ha_cluster = startswith(var.cluster_flavor, "cce.s2")
+
   # One node pool per AZ keeps the worker nodes spread across zones even when
   # the node pool itself is later scaled.
   node_pools = { for index, az in var.availability_zones : "az${index}" => az }
@@ -31,7 +36,7 @@ resource "huaweicloud_cce_cluster" "this" {
   period_unit            = var.charging_mode == "prePaid" ? var.period_unit : null
 
   dynamic "masters" {
-    for_each = length(var.availability_zones) >= 3 ? var.availability_zones : []
+    for_each = local.is_ha_cluster && length(var.availability_zones) >= 3 ? var.availability_zones : []
     content {
       availability_zone = masters.value
     }
@@ -54,8 +59,8 @@ resource "huaweicloud_cce_cluster" "this" {
 
 check "control_plane_ha" {
   assert {
-    condition     = length(var.availability_zones) >= 3
-    error_message = "Fewer than three availability zones: the CCE control plane will be created with a single master and is not highly available. Pass az_list with three zones if the region offers them."
+    condition     = !local.is_ha_cluster || length(var.availability_zones) >= 3
+    error_message = "cce.s2.* is the three-master control plane but fewer than three availability zones were given: the cluster will be created with a degraded control plane. Pass three AZs or use cce.s1.* deliberately."
   }
 }
 

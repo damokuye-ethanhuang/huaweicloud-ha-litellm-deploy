@@ -38,6 +38,11 @@ output "app_subnet_neutron_id" {
   value       = data.huaweicloud_vpc_subnet.app.ipv4_subnet_id
 }
 
+output "access_subnet_neutron_id" {
+  description = "Neutron subnet id of the access subnet. Used by the CCE-created Ingress ELB as vip_subnet_cidr_id so the VIP sits in front of the app subnet."
+  value       = data.huaweicloud_vpc_subnet.access.ipv4_subnet_id
+}
+
 output "data_subnet_id" {
   description = "Data subnet: RDS, DCS and other stateful components."
   value       = huaweicloud_vpc_subnet.this["data"].id

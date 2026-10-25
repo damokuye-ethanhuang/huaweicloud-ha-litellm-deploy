@@ -93,16 +93,33 @@ extraArgs:
   - "1"
 
 service:
-  type: LoadBalancer
-  port: 443
+  # ClusterIP by default: the Ingress (see ingress.*) owns the ELB and routes to
+  # this Service. Switch to LoadBalancer only for elb_mode = standalone, where
+  # scripts/deploy.sh binds the Terraform-owned ELB through annotations.
+  type: ClusterIP
+  port: 4000
   targetPort: http
-  # CCE annotations are rendered by scripts/deploy-app.sh, for example:
+  # CCE annotations for the standalone path, rendered by scripts/deploy.sh:
   #   kubernetes.io/elb.id: <elb id>
   #   kubernetes.io/elb.class: performance
   #   kubernetes.io/elb.protocol-port: https:443
   #   kubernetes.io/elb.cert-id: <certificate id>
   annotations: {}
   sessionAffinity: None
+
+ingress:
+  # CCE ELB Ingress: the controller creates the internal dedicated ELB from
+  # kubernetes.io/elb.autocreate, so nothing outside Kubernetes owns it.
+  enabled: true
+  className: cce
+  # Rendered by scripts/deploy.sh from the terraform output `ingress_elb`:
+  #   kubernetes.io/elb.class: performance
+  #   kubernetes.io/elb.port: "443"
+  #   kubernetes.io/elb.autocreate: '{"type":"inner",...}'
+  annotations: {}
+  host: ""
+  path: /
+  pathType: Prefix
 
 resources:
   # Official sizing (docs.litellm.ai/docs/proxy/prod): 1 vCPU and 4Gi per pod,

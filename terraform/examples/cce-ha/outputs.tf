@@ -1,11 +1,29 @@
 output "gateway_url" {
-  description = "Private endpoint of the LiteLLM gateway, reachable from the VPC and connected networks only."
-  value       = var.enable_https ? "https://${module.elb.private_ip}" : "http://${module.elb.private_ip}"
+  description = "Private endpoint of the LiteLLM gateway. Empty when elb_mode = ingress: the Ingress controller allocates the VIP after apply, read it with 'kubectl -n litellm get ingress'."
+  value       = var.elb_mode == "standalone" ? (var.enable_https ? "https://${module.elb[0].private_ip}" : "http://${module.elb[0].private_ip}") : ""
 }
 
 output "gateway_private_ip" {
-  description = "Private VIP of the internal load balancer. Point your internal DNS at this address."
-  value       = module.elb.private_ip
+  description = "Private VIP of the internal load balancer (standalone mode only). Point your internal DNS at this address."
+  value       = var.elb_mode == "standalone" ? module.elb[0].private_ip : null
+}
+
+output "elb_mode" {
+  description = "Who owns the load balancer: ingress (CCE controller) or standalone (Terraform)."
+  value       = var.elb_mode
+}
+
+output "ingress_elb" {
+  description = "Parameters the Ingress annotation needs to create the internal ELB. Null in standalone mode."
+  value = var.elb_mode == "ingress" ? {
+    name               = local.names["elb"]
+    class              = "performance"
+    type               = "inner"
+    l7_flavor_name     = var.elb_l7_flavor_name
+    vip_subnet_cidr_id = module.network.access_subnet_neutron_id
+    elb_virsubnet_ids  = [module.network.app_subnet_neutron_id]
+    available_zone     = slice(local.azs, 0, 2)
+  } : null
 }
 
 output "litellm_image" {
@@ -14,13 +32,13 @@ output "litellm_image" {
 }
 
 output "loadbalancer_id" {
-  description = "ELB ID used by the Helm chart Service annotations."
-  value       = module.elb.loadbalancer_id
+  description = "ELB ID of the Terraform-owned load balancer. Empty in ingress mode (CCE creates the ELB from the Ingress annotation)."
+  value       = var.elb_mode == "standalone" ? module.elb[0].loadbalancer_id : ""
 }
 
 output "certificate_id" {
-  description = "Certificate ID referenced by the HTTPS listener. Empty when TLS is disabled."
-  value       = module.elb.certificate_id
+  description = "Certificate ID referenced by the HTTPS listener. Empty when TLS is disabled or the ELB is created by the Ingress controller."
+  value       = var.elb_mode == "standalone" ? module.elb[0].certificate_id : ""
 }
 
 output "resource_names" {

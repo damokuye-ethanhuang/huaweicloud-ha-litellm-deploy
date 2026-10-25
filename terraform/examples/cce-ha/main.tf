@@ -133,23 +133,26 @@ resource "huaweicloud_kms_key" "this" {
 module "network" {
   source = "../../modules/maas-network"
 
-  names                  = local.names
-  vpc_cidr               = var.vpc_cidr
-  access_subnet_cidr     = var.access_subnet_cidr
-  app_subnet_cidr        = var.app_subnet_cidr
-  data_subnet_cidr       = var.data_subnet_cidr
-  ops_subnet_cidr        = var.ops_subnet_cidr
-  vpce_subnet_cidr       = var.vpce_subnet_cidr
-  create_vpce_subnet     = var.vpce_enabled
-  availability_zone      = local.azs[0]
-  pod_cidr               = var.pod_cidr
-  client_cidrs           = var.allowed_client_cidrs
-  admin_cidrs            = var.admin_access_cidrs
-  bastion_ssh_cidrs      = var.bastion_enabled ? var.bastion_ssh_cidrs : []
-  enable_nat_gateway     = var.enable_nat_gateway
-  nat_eip_bandwidth_size = var.nat_eip_bandwidth_size
-  enterprise_project_id  = local.eps_id
-  tags                   = local.common_tags
+  names              = local.names
+  vpc_cidr           = var.vpc_cidr
+  access_subnet_cidr = var.access_subnet_cidr
+  app_subnet_cidr    = var.app_subnet_cidr
+  data_subnet_cidr   = var.data_subnet_cidr
+  ops_subnet_cidr    = var.ops_subnet_cidr
+  vpce_subnet_cidr   = var.vpce_subnet_cidr
+  create_vpce_subnet = var.vpce_enabled
+  availability_zone  = local.azs[0]
+  pod_cidr           = var.pod_cidr
+  # Tunnel mode hides pod IPs behind VXLAN: the node source-NATs pod traffic,
+  # so only the app subnet (node addresses) may reach PostgreSQL/Redis.
+  pod_cidr_ingress_enabled = var.cce_container_network_type != "overlay_l2"
+  client_cidrs             = var.allowed_client_cidrs
+  admin_cidrs              = var.admin_access_cidrs
+  bastion_ssh_cidrs        = var.bastion_enabled ? var.bastion_ssh_cidrs : []
+  enable_nat_gateway       = var.enable_nat_gateway
+  nat_eip_bandwidth_size   = var.nat_eip_bandwidth_size
+  enterprise_project_id    = local.eps_id
+  tags                     = local.common_tags
 }
 
 module "postgres" {
@@ -251,14 +254,19 @@ module "bastion" {
 
 module "elb" {
   source = "../../modules/elb"
+  # Ingress mode: the CCE Ingress controller creates the ELB from the
+  # kubernetes.io/elb.autocreate annotation, so Terraform must not create one.
+  count = var.elb_mode == "standalone" ? 1 : 0
 
   names  = local.names
   vpc_id = module.network.vpc_id
   # ELB v3 resolves the VIP subnet by neutron id; the VPC subnet id is rejected
   # as "could not be found". See the data source note in maas-network.
-  subnet_id          = module.network.app_subnet_neutron_id
-  availability_zones = slice(local.azs, 0, 2)
-  l7_flavor_id       = var.elb_l7_flavor_id
+  subnet_id           = module.network.app_subnet_neutron_id
+  availability_zones  = slice(local.azs, 0, 2)
+  l7_flavor_id        = var.elb_l7_flavor_id
+  vip_address         = var.elb_vip_address
+  deletion_protection = var.elb_deletion_protection
   # Internal by design: this reference architecture must not expose the gateway
   # to the internet.
   internal              = true
@@ -308,9 +316,12 @@ module "vpcep" {
 }
 
 resource "huaweicloud_elb_log" "this" {
-  count = var.enable_lts_logs ? 1 : 0
+  # Only the Terraform-owned ELB can be wired to LTS from here. When the ELB is
+  # created by the Ingress controller, enable access logging on the ELB that CCE
+  # created (console or ELB API) - Terraform never sees its ID at plan time.
+  count = var.enable_lts_logs && var.elb_mode == "standalone" ? 1 : 0
 
-  loadbalancer_id = module.elb.loadbalancer_id
+  loadbalancer_id = module.elb[0].loadbalancer_id
   log_group_id    = module.observability.log_group_id
   log_topic_id    = module.observability.log_stream_id
 }
@@ -320,13 +331,13 @@ resource "huaweicloud_elb_log" "this" {
 # -----------------------------------------------------------------------------
 
 locals {
-  alarms = var.enable_alarms ? [
+  alarms = var.enable_alarms && var.elb_mode == "standalone" ? [
     {
       name                = "${local.names["smn"]}-elb-unhealthy"
       namespace           = "SYS.ELB"
       metric_name         = "m9_abnormal_servers"
       dimension_name      = "lbaas_instance_id"
-      dimension_value     = module.elb.loadbalancer_id
+      dimension_value     = module.elb[0].loadbalancer_id
       comparison_operator = ">"
       value               = 0
       count               = 3
@@ -407,6 +418,13 @@ resource "huaweicloud_aom_prom_instance" "this" {
 # -----------------------------------------------------------------------------
 # Input consistency
 # -----------------------------------------------------------------------------
+
+check "ingress_owns_the_vip" {
+  assert {
+    condition     = var.elb_mode != "ingress" || var.elb_vip_address == ""
+    error_message = "elb_vip_address only applies to elb_mode = standalone. With elb_mode = ingress the CCE Ingress controller allocates the VIP from the access subnet."
+  }
+}
 
 check "tls_has_certificate" {
   assert {

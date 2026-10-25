@@ -1,0 +1,29 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "litellm.fullname" . }}
+  labels:
+    {{- include "litellm.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  # "cce" selects the CCE-managed ELB Ingress controller. It is built in: no
+  # NGINX Ingress addon is installed, and Terraform creates no ELB either.
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host | quote }}
+      {{- end }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path | quote }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ include "litellm.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

@@ -75,38 +75,27 @@ cmd_bundle() {
   rm -rf "$BUNDLE_DIR"
   mkdir -p "$BUNDLE_DIR"
 
-  local elb cert image gateway
+  local elb cert image gateway mode ingress
+  mode="$(terraform_output "$TF_DIR" elb_mode)"
+  ingress="$(terraform_output_json "$TF_DIR" ingress_elb)"
   elb="$(terraform_output "$TF_DIR" loadbalancer_id)"
   cert="$(terraform_output "$TF_DIR" certificate_id)"
   image="$(terraform_output "$TF_DIR" litellm_image)"
   gateway="$(terraform_output "$TF_DIR" gateway_private_ip)"
-  [ -n "$elb" ] || die "loadbalancer_id is empty; did apply-infra finish?"
+  if [ "$mode" = "standalone" ] && [ -z "$elb" ]; then
+    die "loadbalancer_id is empty; did apply-infra finish?"
+  fi
 
-  # Helm values: rendered models/fallbacks + runtime ELB annotations + image.
-  python3 - "$OUT_DIR/helm-values.yaml" "$BUNDLE_DIR/values.yaml" \
-    "$image" "$elb" "$cert" <<'PY'
-import sys
-import yaml
-
-src, dst, image, elb, cert = sys.argv[1:6]
-values = yaml.safe_load(open(src, encoding="utf-8")) or {}
-repo, _, tag = image.rpartition(":")
-values.setdefault("image", {}).update({"repository": repo, "tag": tag})
-annotations = {
-    "kubernetes.io/elb.id": elb,
-    "kubernetes.io/elb.class": "performance",
-    "kubernetes.io/elb.port": "443",
-}
-if cert:
-    annotations["kubernetes.io/elb.protocol-port"] = "https:443"
-    annotations["kubernetes.io/elb.cert-id"] = cert
-else:
-    annotations["kubernetes.io/elb.protocol-port"] = "http:443"
-values.setdefault("service", {}).update(
-    {"type": "LoadBalancer", "port": 443, "annotations": annotations}
-)
-yaml.safe_dump(values, open(dst, "w", encoding="utf-8"), sort_keys=False)
-PY
+  # Helm values: rendered models/fallbacks + ELB/Ingress wiring + image. One
+  # renderer for both paths, so the bastion applies exactly what deploy.sh would.
+  python3 "$REPO/scripts/render-helm-values.py" \
+    --src "$OUT_DIR/helm-values.yaml" \
+    --dst "$BUNDLE_DIR/values.yaml" \
+    --image "$image" \
+    --mode "$mode" \
+    --elb-id "$elb" \
+    --cert-id "$cert" \
+    --ingress-json "$ingress"
 
   # Secret contents: Terraform-generated first, provider keys last so an
   # operator-supplied value wins.
@@ -126,8 +115,8 @@ PY
   cp -R "$REPO/charts/litellm" "$BUNDLE_DIR/chart"
   cp "$REPO/scripts/smoke-test.sh" "$REPO/scripts/lib.sh" "$BUNDLE_DIR/"
 
-  printf 'NAMESPACE=%s\nRELEASE=%s\nHELM_TIMEOUT=%s\nGATEWAY=%s\n' \
-    "$NAMESPACE" "$RELEASE" "$HELM_TIMEOUT" "$gateway" >"$BUNDLE_DIR/meta.env"
+  printf 'NAMESPACE=%s\nRELEASE=%s\nHELM_TIMEOUT=%s\nGATEWAY=%s\nELB_MODE=%s\nCERT_ID=%s\n' \
+    "$NAMESPACE" "$RELEASE" "$HELM_TIMEOUT" "$gateway" "$mode" "$cert" >"$BUNDLE_DIR/meta.env"
 
   # Everything the bastion executes lives here; it needs only kubectl + helm.
   cat >"$BUNDLE_DIR/install.sh" <<'SH'
@@ -198,10 +187,29 @@ cmd_run() {
 bundle_gateway() {
   # Parsed rather than sourced: meta.env is data, and sourcing it would rely on
   # the caller never injecting a line.
-  local gateway
+  local gateway mode namespace
   [ -f "$BUNDLE_DIR/meta.env" ] || die "no bundle metadata; run 'bundle' first"
   gateway="$(sed -n 's/^GATEWAY=//p' "$BUNDLE_DIR/meta.env")"
-  [ -n "$gateway" ] || die "bundle metadata has no GATEWAY"
+  if [ -z "$gateway" ]; then
+    # Ingress mode: Terraform has no VIP. Ask the cluster - the ELB only exists
+    # after the CCE Ingress controller has reconciled the Ingress.
+    mode="$(sed -n 's/^ELB_MODE=//p' "$BUNDLE_DIR/meta.env")"
+    [ "$mode" = "ingress" ] || die "bundle metadata has no GATEWAY and elb_mode is '$mode'"
+    namespace="$(sed -n 's/^NAMESPACE=//p' "$BUNDLE_DIR/meta.env")"
+    log "elb_mode = ingress: waiting for the Ingress to report its VIP"
+    gateway="$(
+      "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "${SSH_TARGET[@]}" "
+        export KUBECONFIG='$REMOTE_DIR/kubeconfig'
+        for i in \$(seq 1 60); do
+          v=\$(kubectl -n '$namespace' get ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+          if [ -n \"\$v\" ]; then echo \"\$v\"; exit 0; fi
+          sleep 5
+        done
+        exit 1"
+    )" || die "the Ingress has no VIP after 5 minutes; check 'kubectl -n $namespace describe ingress'"
+    cert="$(sed -n 's/^CERT_ID=//p' "$BUNDLE_DIR/meta.env")"
+    if [ -n "$cert" ]; then gateway="https://$gateway"; else gateway="http://$gateway"; fi
+  fi
   printf '%s' "$gateway"
 }
 
