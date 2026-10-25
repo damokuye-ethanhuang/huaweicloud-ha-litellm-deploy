@@ -184,6 +184,7 @@ skills/              agent skill（部署流程），`make skill-install` 安装
 | [skills/litellm-huaweicloud-deploy/SKILL.md](skills/litellm-huaweicloud-deploy/SKILL.md) | agent skill：阶段流程、堡垒机交接、故障路由 |
 | [docs/cost.md](docs/cost.md) | 资源清单、参考价格、降本手段 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 现象 → 原因 → 处理 |
+| [docs/deployment-optimizations.md](docs/deployment-optimizations.md) | 首次真实部署的 17 个坑位：现象、根因、修法 |
 | [docs/modelarts-intranet.md](docs/modelarts-intranet.md) | 通过 VPCEP 私网调用 ModelArts |
 | [docs/huaweicloud-regions.md](docs/huaweicloud-regions.md) | Region、Endpoint、AZ 规律、规格编码 |
 

@@ -185,3 +185,78 @@ bootstrap 用 apt + 官方源，`set -e`，所以必须放行：
 **节点规格结论**：`ac8.xlarge.4`（4C16G）不够——CCE 系统组件占 3250m/3920m，
 剩 670m 装不下 1 vCPU 的 Pod，导致只能单 AZ。`ac8.2xlarge.2`（8C16G，7910m）
 可稳定 1 副本/AZ。
+
+## 15. 销毁顺序：应用 → 集群 → 数据，且不要先删堡垒机
+
+**现象**：`terraform destroy` 在
+`huaweicloud_rds_pg_database.litellm` 处失败：
+`DBS.1010155 Other users are accessing the database`。
+
+**原因**：LiteLLM Pod 仍在连 PostgreSQL（连接池），数据库对象无法删除。
+同时堡垒机若先被销毁，就再没有入口去 `helm uninstall` 释放连接。
+
+**正确顺序**：
+1. `helm uninstall` + 删除 `litellm` namespace（释放数据库连接）
+2. 销毁 CCE（节点、集群）
+3. 销毁 ELB、VPC、安全组
+4. 最后销毁 RDS/DCS/KMS
+
+Terraform 一次 destroy 不保证顺序，必要时用 `-target` 分步：
+`-target=module.cce -target=module.elb`，再全量 destroy。
+
+## 16. 运维脚本的两个自伤陷阱
+
+1. **`pkill -f "<pattern>"` 会杀掉自己**：通过 ssh 执行的命令行本身包含该
+   pattern，`pkill` 匹配到自身导致命令被 SIGKILL，表现为“执行后无输出”。
+   用 `pgrep -x <进程名>` 精确匹配，或先查 PID 再 kill 具体 PID。
+2. **`cmd | tail -N` 掩盖退出码**：见第 11 条。判成败只看退出码或
+   `grep -E 'error|denied|failed'`，不要靠“最后几行看着正常”。
+
+## 17. 纯内网验证：关掉 NAT 后服务仍可用
+
+关闭 NAT 网关（同时删除 SNAT 规则与其 EIP）后复查：
+
+- `/health/readiness` 仍返回 200，3 副本 Running
+- 镜像可从内网 SWR（`100.125.x`）拉取，不依赖公网
+
+证明架构不依赖公网出口。**注意**：之后若要给节点装包或拉公网镜像，
+必须先经堡垒机下载并推 SWR，不能指望节点直连。
+
+## 18. ELB 删除保护会阻断销毁
+
+**现象**：`terraform destroy` 报
+`ELB.8917 Deletion Protection of loadbalancer ... is enable`。
+
+删除保护是安全最佳实践，但 IaC 建的对象会把它一起建出来，销毁前必须先关：
+
+```bash
+# PUT，body 用布尔值，字符串 "false" 无效
+PUT https://elb.<region>.myhuaweicloud.com/v3/<project>/elb/loadbalancers/<lb-id>
+{"loadbalancer": {"deletion_protection_enable": false}}
+```
+
+**建议**：把删除保护做成变量（默认开、销毁前显式关），或在
+`docs/deployment.md` 的 teardown 步骤里加一条前置检查。
+
+## 19. 销毁与清理的完整顺序（实测可用）
+
+1. `helm uninstall` + 删除 namespace（释放 RDS 连接，否则数据库删不掉）
+2. `terraform destroy -target=module.cce -target=module.elb`
+   （集群里有 Pod 时数据层删不掉）
+3. 关闭 ELB 删除保护（见第 18 条）
+4. `terraform destroy` 全量（VPC/子网/ELB/RDS/DCS/KMS/CSMS）
+5. 清理本地敏感产物：`out/bastion/app.env`、`.local/bastion_key`、`.local/.bpass`
+6. `./scripts/creds.sh clear` → `./scripts/handoff.py scrub` → `check` 必须输出 `clean`
+7. **SWR 里的镜像不会随 Terraform 销毁**：`swr.<region>/<org>/litellm:<tag>`
+   会继续占存储，需要另行删除组织或镜像。
+
+## 20. 首次部署的最终验证结果（可作为回归基线）
+
+| 检查 | 期望 |
+|---|---|
+| `kubectl get pods` | 3/3 Running，分布在 3 个不同 zone |
+| `curl :443/health/readiness` | 200 |
+| `curl -H "Authorization: Bearer $MASTER_KEY" :443/v1/models` | 200，返回配置的模型列表 |
+| 不带 token 访问 `/v1/models` | 401 |
+| 删除 1 个副本 | 60 秒内持续 200 |
+| 关闭 NAT 后 | 上述全部仍成立 |

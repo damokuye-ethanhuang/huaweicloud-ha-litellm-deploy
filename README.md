@@ -238,6 +238,7 @@ The first `terraform plan` in your account is the real acceptance test.
 | [monitoring/grafana-dashboard.json](monitoring/grafana-dashboard.json) | Grafana dashboard for AOM's Prometheus endpoint |
 | [docs/cost.md](docs/cost.md) | Resource list, reference prices, cost levers |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Symptom → cause → fix |
+| [docs/deployment-optimizations.md](docs/deployment-optimizations.md) | Field notes from the first real deployment: 17 issues, symptom -> cause -> fix |
 | [docs/modelarts-intranet.md](docs/modelarts-intranet.md) | Calling ModelArts over a VPC endpoint |
 | [docs/huaweicloud-regions.md](docs/huaweicloud-regions.md) | Regions, endpoints, AZ quirks, flavor codes |
 

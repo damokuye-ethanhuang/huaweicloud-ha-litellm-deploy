@@ -6,6 +6,42 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/apply-staged.sh` - applies the stack in dependency order (edge, data,
+  compute, cache, ops) so the risky and slow pieces fail early and metered
+  resources come last.
+- `scripts/preflight-network.sh` - DNS, TCP, registry handshake, **authentication**
+  and disk checks that must pass before any push or bulk transfer.
+- `scripts/push-image.sh` - preflight, push with `pipefail`, then verify the
+  manifest exists at the destination. A bare `docker push ... | tail` reports the
+  exit status of `tail`, which once hid a rejected push.
+- `docs/deployment-optimizations.md` - the field notes from the first real
+  deployment: 17 issues, each with symptom, root cause and fix.
+
+### Fixed
+
+- **ELB could not be created** (`subnet ... could not be found`): the v3 API wants
+  the neutron subnet id, not the VPC subnet id. The network module now exports
+  `app_subnet_neutron_id`.
+- **Worker node disks**: GPSSD2 requires explicit IOPS and throughput; the
+  bastion stays on GPSSD because `huaweicloud_compute_instance` exposes neither.
+- **Node volume encryption** is now opt-in (`encrypt_node_volumes`): CCE validates
+  the key through the cluster agency, which lacks KMS rights and fails with
+  `EVS.2264 get Agency's token failed`.
+- **Worker password format** - CCE needs three character classes and a limited
+  special set, otherwise `Unexpected initial node password format`.
+- **DCS could not attach a security group** (`DCS.4872`): Redis 5.0/6.0 rejects it;
+  only Memcached and Redis 3.0 accept one.
+- **Migration Job referenced a ServiceAccount that did not exist yet** - it is a
+  pre-install hook, so it now uses the namespace default SA.
+- **`existingSecret` was never passed to helm**, so every install died in the
+  template with `existingSecret is required`.
+- **Pods could not reach PostgreSQL** (`P1001`): overlay pods use the container
+  CIDR `172.16.0.0/16`, which the data security group did not allow.
+- **All replicas landed in one AZ**: the zone spread constraint was
+  `ScheduleAnyway`. It is now `DoNotSchedule`.
+
 ### Changed
 
 - **Operations subnet.** The VPC is now a fixed `/21` carved by `cidrsubnets`
