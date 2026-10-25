@@ -30,6 +30,61 @@ explicitly to a fixed L7 flavor ID from the ELB console.
 Upload the certificate to SCM/ELB and put its ID in `certificate_id`, or set
 `enable_https = false` for a lab.
 
+### Bastion has no `kubectl`/`helm` after boot
+
+The bootstrap script installs both via apt and `dl.k8s.io`, and runs with
+`set -e`. Two egress rules are therefore mandatory:
+
+- **TCP 80** — the stock Ubuntu sources fetch over plain HTTP.
+- **UDP 53** — the VPC resolvers are `100.125.x`, outside the VPC CIDR, so a
+  rule limited to the VPC range blocks DNS and every download fails with
+  `Temporary failure resolving 'repo.huaweicloud.com'`.
+
+`module.network` now ships both. To repair a running bastion without rebuilding
+it: `bash /var/lib/cloud/instance/user-data.txt` on the box (wait for
+`cloud-init status` to leave `running` first, or apt will be locked).
+
+### `Permission denied` for `root` on the bastion
+
+This image refuses root password login. `admin_pass` is set at creation and the
+password is stored in CSMS, but SSH still answers `Permission denied` — and a
+reset password only takes effect after a reboot, which some change-control
+processes forbid.
+
+Use a key: set `bastion_public_key` to the contents of your `*.pub`. Terraform
+creates the key pair and attaches it to the instance. Rotating this on an
+existing bastion needs the instance replaced
+(`-replace=module.bastion[0].huaweicloud_compute_instance.bastion`); the EIP
+survives, the private IP does not.
+
+### `Unexpected initial node password format`
+
+CCE requires 8–26 characters covering at least **three of** lowercase, uppercase,
+digits and special characters, and accepts only a limited special set
+(`!@$%^*-_=+?`). A `random_password` with `special = false` produces letters and
+digits only — two classes — and is rejected. The example pins
+`min_lower/min_upper/min_numeric/min_special = 1` and an `override_special` set
+for this reason.
+
+### `panic: checkable object status report for unexpected checkable object var.xxx`
+
+Terraform 1.9.x crashes intermittently when `-target` is used together with
+`validation` blocks: the check result is reported for a variable that the
+targeted graph excluded, and the reporting code panics. The variable named in
+the panic differs run to run (`var.metric_backend`, `var.aom_retention`, ...),
+which is the giveaway - it is a race, not a bad value.
+
+Fix: use Terraform **≥ 1.17** (`terraform version`). The root module now
+requires it. If you must stay on 1.9, avoid `-target` (run a flat
+`terraform apply`) and the crash disappears.
+
+### `Error: Invalid target "module.x.resource_type"`
+
+`-target` needs a full resource address including the resource's own name, e.g.
+`module.cce.huaweicloud_cce_node.workers`, not `module.cce.huaweicloud_cce_node`
+(that is a type, not an address). `module.elb` / `module.postgres` work because
+those are module addresses.
+
 ## Application deployment
 
 ### Service stays `Pending`, no external IP

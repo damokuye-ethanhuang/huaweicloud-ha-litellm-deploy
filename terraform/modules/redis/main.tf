@@ -11,6 +11,10 @@ locals {
 
   # Only query the flavor catalogue when the caller did not pin a flavor code.
   lookup_flavor = var.flavor == ""
+
+  # A security group can only be attached to Memcached and Redis 3.0; every
+  # newer engine rejects it (DCS.4872). Gate on the version we were given.
+  attach_security_group = can(regex("^3\\.0", var.engine_version))
 }
 
 data "huaweicloud_dcs_flavors" "ha" {
@@ -32,8 +36,12 @@ resource "huaweicloud_dcs_instance" "this" {
   password           = var.password
   vpc_id             = var.vpc_id
   subnet_id          = var.subnet_id
-  security_group_id  = var.security_group_id
-  ssl_enable         = var.ssl_enable
+  # Only Memcached and Redis 3.0 accept a security group; on Redis 5.0/6.0 HA
+  # the API rejects it with "DCS.4872 Do not support security group whitelist"
+  # (even on update). Isolation comes from the data subnet + AUTH password, plus
+  # the DCS IP whitelist configured in the console if you need it.
+  security_group_id = local.attach_security_group ? var.security_group_id : null
+  ssl_enable        = var.ssl_enable
 
   charging_mode = var.charging_mode
   period_unit   = local.is_prepaid ? var.period_unit : null

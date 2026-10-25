@@ -61,6 +61,12 @@ variable "availability_zone" {
   type        = string
 }
 
+variable "pod_cidr" {
+  description = "Overlay container network CIDR. Pods in tunnel mode get IPs from here, so the data layer must allow it."
+  type        = string
+  default     = "172.16.0.0/16"
+}
+
 variable "client_cidrs" {
   description = "Private CIDRs allowed to call the gateway on 443 via the internal ELB."
   type        = list(string)

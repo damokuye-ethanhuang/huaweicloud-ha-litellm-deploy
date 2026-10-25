@@ -227,6 +227,7 @@ The first `terraform plan` in your account is the real acceptance test.
 | [docs/deployment.md](docs/deployment.md) | Prerequisites, IAM, credentials, step-by-step deploy |
 | [docs/operations.md](docs/operations.md) | Scaling, upgrades, rollback, backup/restore, key rotation |
 | [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM, who calls the gateway |
+| [docs/permissions.md](docs/permissions.md) | Required IAM roles per stage, minimal custom policy, CCE agency caveat |
 | [docs/sa-checklist.md](docs/sa-checklist.md) | Tick-box planning checklist: network, egress, data, encryption, go-live |
 | [docs/inputs-guide.md](docs/inputs-guide.md) | How to fill the inputs, how to write the model list |
 | [docs/manual-deployment.md](docs/manual-deployment.md) | Console click-through when Terraform is not allowed |

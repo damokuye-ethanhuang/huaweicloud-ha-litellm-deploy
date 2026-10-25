@@ -86,6 +86,7 @@ def from_sdk() -> list[str] | None:
         return None
     try:
         from huaweicloudsdkcore.auth.credentials import BasicCredentials
+        from huaweicloudsdkcore.region.region import Region
         from huaweicloudsdkcce.v3 import CceClient, ShowClusterSupportConfigurationRequest
     except ImportError:
         print("[warn] huaweicloudsdkcce not installed; skipping the API check", file=sys.stderr)
@@ -94,7 +95,7 @@ def from_sdk() -> list[str] | None:
     client = (
         CceClient.new_builder()
         .with_credentials(BasicCredentials(ak, sk, project))
-        .with_region(region())
+        .with_region(Region(id=region()))
         .build()
     )
     request = ShowClusterSupportConfigurationRequest(cluster_type="VirtualMachine", network_mode="vpc-router")

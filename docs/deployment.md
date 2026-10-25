@@ -115,24 +115,64 @@ lts:* aom:* smn:* ces:* vpn:* vpcep:* swr:*
 
 ### CCE version
 
-CCE retires old Kubernetes versions and some regions require an exact patch
-level (e.g. `v1.31.1-r0`). `deploy-inputs.yaml` leaves `cce_cluster_version`
-empty on purpose: `deploy.sh` resolves it per region at run time through the
-official SDK.
+CCE retires old Kubernetes versions, and the version a region accepts changes
+over time, so `deploy-inputs.yaml` leaves `cce_cluster_version` empty on purpose
+and `deploy.sh` resolves it per run.
+
+There is **no API that lists supported cluster versions** — this is worth
+knowing before you go looking for one. `ShowVersion` returns API metadata (the
+string `v3`), `ShowClusterSupportConfiguration` returns component flags such as
+`kube-apiserver` tuning, and `ListReleases` is not published in every region
+(cn-southwest-2 answers 404). Resolution therefore uses two real sources:
+
+1. the official CCE version-strategy bulletin, parsed for the commercial / beta /
+   EOS lifecycle table;
+2. a live probe — a cluster-create request with a deliberately bogus VPC id. If
+   the API complains about the VPC rather than the version, that version is
+   accepted in this region.
 
 ```bash
 python3 -m venv .venv-sdk
 .venv-sdk/bin/pip install huaweicloudsdkcce
-.venv-sdk/bin/python scripts/resolve-cce-version.py --dry-run   # show, do not write
-./scripts/check-cce-versions.py                                 # API + preset drift
+.venv-sdk/bin/python scripts/resolve-cce-version.py --dry-run      # show
+.venv-sdk/bin/python scripts/resolve-cce-version.py --probe v1.34  # test one
+./scripts/check-cce-versions.py                                    # preset drift
 ```
 
-`check-cce-versions.py` compares the live list (SDK) and any vendor doc page you
-add to `version-presets.yaml:cce.doc_sources` against the preset, and with
-`--write` bumps `max_minor`. The procedure for a real upgrade is in
-`docs/upgrade-procedure.md`.
+The bulletin URL lives in `scripts/resolve-cce-version.py` (`BULLETIN`); if
+Huawei moves the page, update it there. If the page is unreachable the script
+falls back to a known-good floor and says so — treat that as a signal to check
+the page by hand, not as success.
 
 If you must pin a version, put it in `deploy-inputs.yaml` and note why.
+
+### Availability zones
+
+`az_policy: auto` (default) asks the region which AZs are live and which of them
+offer the node flavor, then applies `az_preferred` to choose among them. The
+resolved list is written back to `az_list`, and only that list reaches
+Terraform — `huaweicloud_availability_zones` has no filter argument, so a
+preference cannot be expressed in HCL and must not be faked there.
+
+```bash
+.venv-sdk/bin/python scripts/resolve-az.py --dry-run
+```
+
+Set `az_policy: fixed` to pin AZs exactly as written and skip the lookup. In
+cn-southwest-2 the live AZs are `2a/2d/2e/2f` (there is no `2b`/`2c`); the
+default preference is `2d/2e/2f` because `2a` is the older zone.
+
+### Permissions
+
+`docs/permissions.md` lists the IAM role per service and which stage needs it.
+Check an identity before the first apply:
+
+```bash
+./scripts/check-permissions.sh          # read-only probe, prints a matrix
+```
+
+A `403` there would otherwise surface in the middle of `apply`, after some
+resources already exist.
 
 ### Remote state (recommended)
 
@@ -222,6 +262,34 @@ than applying.
 
 20–40 minutes; CCE node provisioning dominates. Safe to re-run after a partial
 failure.
+
+### Creation order (use the staged script)
+
+`apply-infra` runs one flat `terraform apply`, which gives no control over the
+order Terraform picks. For a first deploy - and whenever something has already
+failed - run the stages instead:
+
+```bash
+./scripts/apply-staged.sh              # all five stages, in order
+./scripts/apply-staged.sh edge data    # only the named ones, in given order
+DRY_RUN=1 ./scripts/apply-staged.sh    # plan only
+```
+
+| Stage | Creates | Why here |
+|---|---|---|
+| 1 `edge` | ELB + access log | Fastest (~10 s) and historically the riskiest wiring; fails in a minute instead of after the database. |
+| 2 `data` | RDS primary/standby + `litellm` database | Longest lead time (~5 min); nothing downstream can be tested without it. |
+| 3 `compute` | 3 CCE worker nodes, one per AZ | Slow and complex (~10–15 min) but depends only on network + cluster. |
+| 4 `cache` | DCS Redis primary/standby | In-place update, quick. |
+| 5 `ops` | Bastion host + EIP association | Metered and fully independent — kept last so a failed earlier stage leaves no public IP billing. |
+
+The stages map onto dependencies, not onto blocks: a stage only references
+resources the earlier stages already created. Each stage saves its plan to
+`.local/plans/<stage>.tfplan` and applies that exact plan.
+
+> `-target` requires Terraform **≥ 1.17**; older versions panic on variable
+> validation under `-target` (see `docs/troubleshooting.md`).
+
 
 Outputs worth knowing:
 

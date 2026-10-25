@@ -66,8 +66,15 @@ resource "random_password" "redis" {
 }
 
 resource "random_password" "node" {
-  length  = 16
-  special = false
+  # CCE rejects a password that mixes fewer than three character classes, and
+  # only accepts a small special set. Letters+digits alone fails with
+  # "Unexpected initial node password format".
+  length           = 20
+  min_lower        = 1
+  min_upper        = 1
+  min_numeric      = 1
+  min_special      = 1
+  override_special = "!@$%^*-_=+"
 }
 
 resource "random_password" "master_key" {
@@ -135,6 +142,7 @@ module "network" {
   vpce_subnet_cidr       = var.vpce_subnet_cidr
   create_vpce_subnet     = var.vpce_enabled
   availability_zone      = local.azs[0]
+  pod_cidr               = var.pod_cidr
   client_cidrs           = var.allowed_client_cidrs
   admin_cidrs            = var.admin_access_cidrs
   bastion_ssh_cidrs      = var.bastion_enabled ? var.bastion_ssh_cidrs : []
@@ -202,12 +210,25 @@ module "cce" {
   node_password          = random_password.node.result
   root_volume_size       = var.cce_node_root_volume_size
   data_volume_size       = var.cce_node_data_volume_size
-  kms_key_id             = local.kms_key_id
-  charging_mode          = var.charging_mode
-  period                 = var.period
-  period_unit            = var.period_unit
-  enterprise_project_id  = local.eps_id
-  tags                   = local.common_tags
+  # Off by default: encrypting worker disks needs the cluster's agency
+  # (cce_admin_trust) to hold KMS access. Without it CCE returns
+  #   "Invalid cmkid ... get Agency's token failed" (EVS.2264)
+  # even though the key is valid. See docs/permissions.md.
+  kms_key_id            = var.encrypt_node_volumes ? local.kms_key_id : null
+  charging_mode         = var.charging_mode
+  period                = var.period
+  period_unit           = var.period_unit
+  enterprise_project_id = local.eps_id
+  tags                  = local.common_tags
+}
+
+resource "huaweicloud_compute_keypair" "bastion" {
+  # Created only when the operator brings their own public key. Key auth is the
+  # recommended path: the image here refuses root password login, and a password
+  # can only be changed by rebooting (which some shops forbid).
+  count      = var.bastion_enabled && var.bastion_public_key != "" ? 1 : 0
+  name       = "${local.names["bastion"]}-key"
+  public_key = var.bastion_public_key
 }
 
 module "bastion" {
@@ -221,6 +242,7 @@ module "bastion" {
   availability_zone     = local.azs[0]
   flavor_id             = var.bastion_flavor
   admin_password        = random_password.bastion[0].result
+  key_pair              = one(huaweicloud_compute_keypair.bastion[*].name) != null ? one(huaweicloud_compute_keypair.bastion[*].name) : ""
   eip_bandwidth_size    = var.bastion_eip_bandwidth_size
   eip_charge_mode       = var.bastion_eip_charge_mode
   enterprise_project_id = local.eps_id
@@ -230,9 +252,11 @@ module "bastion" {
 module "elb" {
   source = "../../modules/elb"
 
-  names              = local.names
-  vpc_id             = module.network.vpc_id
-  subnet_id          = module.network.app_subnet_id
+  names  = local.names
+  vpc_id = module.network.vpc_id
+  # ELB v3 resolves the VIP subnet by neutron id; the VPC subnet id is rejected
+  # as "could not be found". See the data source note in maas-network.
+  subnet_id          = module.network.app_subnet_neutron_id
   availability_zones = slice(local.azs, 0, 2)
   l7_flavor_id       = var.elb_l7_flavor_id
   # Internal by design: this reference architecture must not expose the gateway

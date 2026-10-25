@@ -15,15 +15,15 @@ mkdir -p /etc/apt/keyrings
 apt-get update -qq
 apt-get install -y -qq curl ca-certificates apt-transport-https gnupg jq >/dev/null
 
-curl -fsSL "https://dl.k8s.io/release/${kubectl_version}/bin/linux/${KARCH}/kubectl" \
+curl -fsSL "https://dl.k8s.io/release/${kubectl_version}/bin/linux/$${KARCH}/kubectl" \
   -o /usr/local/bin/kubectl
 chmod 0755 /usr/local/bin/kubectl
 
-curl -fsSL "https://get.helm.sh/helm-${helm_version}-linux-${KARCH}.tar.gz" -o /tmp/helm.tgz
+curl -fsSL "https://get.helm.sh/helm-${helm_version}-linux-$${KARCH}.tar.gz" -o /tmp/helm.tgz
 tar -xzf /tmp/helm.tgz -C /tmp
-mv "/tmp/linux-${KARCH}/helm" /usr/local/bin/helm
+mv "/tmp/linux-$${KARCH}/helm" /usr/local/bin/helm
 chmod 0755 /usr/local/bin/helm
-rm -rf /tmp/helm.tgz "/tmp/linux-${KARCH}"
+rm -rf /tmp/helm.tgz "/tmp/linux-$${KARCH}"
 
 # Convenience only: the real kubeconfig is delivered by the operator
 # (scripts/deploy.sh deploy-app writes it locally, then users scp it here).

@@ -113,15 +113,24 @@ network (VPN or peering) rather than exposing the ELB.
 
 ## IAM
 
-Deployment policy (starter — scope down to the resource groups you use):
+Who needs which role, and why, is in **[docs/permissions.md](permissions.md)** —
+that page is generated from the resource types this repository actually creates,
+so it lists the roles per stage rather than a wildcard.
 
-```
-vpc:*, nat:*, elb:*, ecs:*, evs:*, ims:*, cce:*, rds:*, dcs:*,
-kms:*, csms:*, lts:*, smn:*, ces:*, vpn:*, vpcep:*
-```
+Three principals, deliberately separated:
 
-Runtime: the gateway uses database passwords, not IAM. No agency is attached to
-the nodes, so a compromised pod cannot call cloud APIs.
+- the **deployment operator** (your machine or CI) holds the write roles;
+- the **bastion operator** holds only `kubectl`/`helm`, no cloud API rights;
+- the **runtime** holds nothing — pods read database and Redis passwords from a
+  Kubernetes Secret, no agency is attached to the nodes, so a compromised pod
+  cannot call a cloud API.
+
+The one non-obvious dependency: CCE needs an **agency** on the first cluster in
+a project, which requires `Tenant Administrator` (or a pre-created
+`cce_admin_trust`). `CCE Administrator` alone will fail at that step.
+
+Run `./scripts/check-permissions.sh` before the first apply — it probes every
+service read-only and reports `403` up front, where it is cheap to fix.
 
 Operators need read-only console access plus `kubectl` rights. Keep the
 cluster-admin kubeconfig out of CI; the deploy script writes it to a 0600 file

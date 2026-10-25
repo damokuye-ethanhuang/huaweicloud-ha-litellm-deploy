@@ -10,7 +10,7 @@ calculator for your region and contract.
 | Resource | Spec | Quantity | Reference price |
 |---|---|---|---|
 | ECS (CCE workers) | `c7n.2xlarge.2`, 8 vCPU / 16 GiB | 3 | $1.22 / h total |
-| CCE | Turbo, `cce.s2.small`, 3 masters | 1 | $0.54 / h |
+| CCE | `cce.s2.large`, 3 masters across 3 AZs | 1 | see note below |
 | RDS PostgreSQL | 16, primary/standby, 8 vCPU / 16 GiB, 100 GB SSD | 1 | $1.05 / h |
 | DCS Redis | primary/standby, 8 GB | 1 | $0.21 / h |
 | ELB | dedicated, 2 AZs, elastic | 1 | $0.025 / h + $0.00833 / LCU |
@@ -24,6 +24,13 @@ On-demand compute for the always-on pieces works out to roughly
 (≈ $73 / month), LCU, EIP traffic and tokens. Prepaid commitments are
 substantially cheaper at these sizes; the official page quotes about
 $248 / month prepaid for its reference configuration.
+
+The `$0.54 / h` figure above is the cluster management fee for `cce.s2.small`.
+The default here is `cce.s2.large`, because in `cn-southwest-2` it is the only
+HA flavor whose master machine type is offered in all three of `2d/2e/2f`
+(`s2.small` covers `2d/2e` only). A larger flavor carries a higher management
+fee — check the price calculator for the current number rather than scaling this
+one, and drop to `cce.s2.small` if you can accept a two-AZ control plane.
 
 This repository's defaults are lighter than the reference: `c7.xlarge.4`
 workers (4 vCPU / 16 GiB) and a 2 GB Redis. Expect less than the numbers above,

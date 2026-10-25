@@ -12,7 +12,10 @@ image:
   tag: "1.106.3"
   pullPolicy: IfNotPresent
 
-imagePullSecrets: []
+# Private SWR repo: the secret is created once per namespace with
+#   kubectl create secret docker-registry swr-cred --docker-server=swr.<region>.myhuaweicloud.com ...
+imagePullSecrets:
+  - name: swr-cred
 
 nameOverride: ""
 fullnameOverride: ""
@@ -102,7 +105,13 @@ service:
   sessionAffinity: None
 
 resources:
-  # LiteLLM guidance: 1 vCPU and 4Gi per worker, requests == limits.
+  # Official sizing (docs.litellm.ai/docs/proxy/prod): 1 vCPU and 4Gi per pod,
+  # requests == limits, scaled by worker count. Kept verbatim.
+  # Node math (measured): a c7.xlarge.2 (8 GiB) reports 6.14 GiB allocatable and
+  # CCE system pods hold ~0.9 GiB, so one 4Gi pod leaves only ~1.2 GiB - no room
+  # for the surge pod a rolling update needs, and none if a zone is lost.
+  # Workers are therefore c7.2xlarge.2 (8C16G, ~14 GiB allocatable): one pod per
+  # AZ at the official size with ~9 GiB spare per node.
   requests:
     cpu: "1"
     memory: 4Gi
@@ -157,9 +166,13 @@ terminationGracePeriodSeconds: 90
 preStopSleepSeconds: 10
 
 topologySpreadConstraints:
+  # Zone spread is HARD: with `ScheduleAnyway` the scheduler packed all three
+  # replicas into one AZ, so an AZ failure took the whole gateway down. With
+  # DoNotSchedule and one node per AZ the replicas land 1-per-zone, which is the
+  # point of the 3-AZ node layout.
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: ScheduleAnyway
+    whenUnsatisfiable: DoNotSchedule
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: ScheduleAnyway

@@ -18,7 +18,7 @@ locals {
 
 resource "huaweicloud_vpc_eip" "bastion" {
   publicip {
-    type = "5_bgp"
+    type = var.eip_type
   }
 
   bandwidth {

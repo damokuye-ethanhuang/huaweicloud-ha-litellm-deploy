@@ -174,6 +174,7 @@ skills/              agent skill（部署流程），`make skill-install` 安装
 | [docs/operations.md](docs/operations.md) | 扩缩容、升级、回滚、备份恢复、密钥轮换 |
 | [docs/security.md](docs/security.md) | 密钥、网络、TLS、镜像验签、IAM、谁可以调用 |
 | [docs/sa-checklist.md](docs/sa-checklist.md) | 可勾选的规划清单：网络、外网边界、数据、加密、上线 |
+| [docs/permissions.md](docs/permissions.md) | IAM 最小权限清单、CCE 委托、策略命名（`*FullPolicy`） |
 | [docs/inputs-guide.md](docs/inputs-guide.md) | 参数怎么填，模型列表怎么写 |
 | [docs/manual-deployment.md](docs/manual-deployment.md) | 不用 Terraform 时的手工控制台步骤 |
 | [docs/upgrade-procedure.md](docs/upgrade-procedure.md) | 版本升级必须走的流程 |

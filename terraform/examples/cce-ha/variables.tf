@@ -118,6 +118,19 @@ variable "bastion_ssh_cidrs" {
   default     = []
 }
 
+variable "bastion_public_key" {
+  description = <<-EOT
+    SSH public key installed on the bastion (key auth).
+
+    Recommended: images on this platform refuse root password login, so a
+    password-only bastion is unreachable. Leave empty to skip key creation and
+    rely on the admin password (only works on images that allow it).
+    Pass the contents of ~/.ssh/id_ed25519.pub here.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "bastion_flavor" {
   description = "Bastion ECS flavor. It runs kubectl/helm only."
   type        = string
@@ -315,9 +328,9 @@ variable "alarm_email" {
 # --- Sizing and versions -----------------------------------------------------
 
 variable "cce_cluster_flavor" {
-  description = "CCE cluster flavor (region specific)."
+  description = "CCE cluster flavor (region specific). Must be s2.* for an HA control plane."
   type        = string
-  default     = "cce.s2.small"
+  default     = "cce.s2.large"
 }
 
 variable "cce_cluster_version" {
@@ -354,6 +367,25 @@ variable "cce_node_data_volume_size" {
   description = "Worker node data disk in GB."
   type        = number
   default     = 100
+}
+
+variable "encrypt_node_volumes" {
+  description = <<-EOT
+    Encrypt worker node disks with the project KMS/DEW key.
+
+    Off by default. CCE validates the key through the cluster agency
+    (cce_admin_trust), so this only works once that agency holds KMS access;
+    otherwise node creation fails with EVS.2264 "get Agency's token failed"
+    even though the key itself is fine. Grant the agency KMS access first
+    (docs/permissions.md), then turn this on.
+  EOT
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.encrypt_node_volumes || var.encryption_mode != "disabled"
+    error_message = "encrypt_node_volumes requires encryption_mode = kms or dew."
+  }
 }
 
 variable "rds_pg_version" {

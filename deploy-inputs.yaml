@@ -111,14 +111,35 @@ network:
       Must not overlap on-prem ranges reachable over VPN or peering.
     map_to: terraform.vpc_cidr
 
+  - key: az_policy
+    value: auto
+    required: false
+    validate: [enum:auto, fixed]
+    help: |
+      auto（默认）= 部署前由 scripts/resolve-az.py 查询本区域真实可用的 AZ，
+      再按 az_preferred 的偏好顺序选取，结果写入 az_list。
+      fixed = 完全按 az_list 写死的值部署。
+      注意：这个开关只作用于本工程的脚本，不是 Terraform/provider 参数；
+      传给 Terraform 的永远只有解析后的 az_list。
+
+  - key: az_preferred
+    value: ["cn-southwest-2d", "cn-southwest-2e", "cn-southwest-2f"]
+    required: false
+    validate: none
+    help: |
+      偏好 AZ，按顺序优先取，只在 az_policy=auto 时生效，且只有区域确实存在这些
+      AZ 时才会用。贵阳一（cn-southwest-2）实际可用区是 2a/2d/2e/2f，没有 b/c，
+      2a 较早，因此偏好 2d/2e/2f。RDS/DCS 主备取 az_list 的前两个。
+      同样只在脚本层生效，不是 provider 参数。
+
   - key: az_list
     value: ["cn-southwest-2d", "cn-southwest-2e", "cn-southwest-2f"]
     required: true
     validate: az_count_ge_2
     help: |
-      固定三个可用区，RDS/DCS 取前两个做主备，CCE 控制面三个都放。
-      贵阳一（cn-southwest-2）的可用区是 2a/2d/2e/2f，没有 b/c，
-      这里显式指定 2d/2e/2f，避免自动取到 2a。
+      实际部署使用的可用区。az_policy=auto 时由 scripts/resolve-az.py 在部署前
+      自动刷新（按 az_preferred 排序），建议不要手改；az_policy=fixed 时这里是唯一
+      依据。至少两个，RDS/DCS 主备需要跨两个 AZ。
     map_to: terraform.az_list
 
   - key: subnet_access_cidr
@@ -354,20 +375,22 @@ egress:
 # -----------------------------------------------------------------------------
 tls:
   - key: tls_mode
-    value: internal_ca
+    value: none
     required: true
     allowed: [elb_cert, internal_ca, none]
     help: |
-      elb_cert   ：ELB 用公有 CA 证书终结 TLS。
+      elb_cert   ：ELB 用公有 CA 证书终结 TLS（公网/对外场景才需要）。
       internal_ca：ELB 用企业内部 CA 证书终结 TLS（内网方案的常见选择）。
-      none       ：VPC 内明文，仅限实验。
+      none       ：VPC 内明文，仅限实验，默认值。
+      说明：公有证书是可选能力，实验/内网自用默认走 none，不申请、不上传证书；
+      需要 TLS 时再切到 internal_ca 或 elb_cert 并填 certificate_id。
     map_to: terraform.tls_mode
 
   - key: certificate_id
     value: ""
     required_if: tls_mode=elb_cert,internal_ca
     validate: uuid
-    help: "ELB 证书 ID（先在 SCM 上传并推送到 ELB）。"
+    help: "ELB 证书 ID（先在 SCM 上传并推送到 ELB）。tls_mode=none 时留空。"
     map_to: terraform.certificate_id
 
 # -----------------------------------------------------------------------------
@@ -447,7 +470,7 @@ observability:
 # -----------------------------------------------------------------------------
 sizing:
   - key: cce_cluster_version
-    value: ""
+    value: "v1.36"
     required: false
     help: |
       留空 = 执行时用官方 SDK 查询本区域当前支持的版本并自动填入
@@ -460,6 +483,22 @@ sizing:
     required: true
     help: "CCE 工作节点规格，每 AZ 一个节点池。规格编码随区域变化。"
     map_to: terraform.cce_node_flavor
+
+  - key: cce_cluster_flavor
+    value: cce.s2.large
+    required: true
+    allowed: [cce.s1.small, cce.s1.medium, cce.s1.large, cce.s2.small, cce.s2.medium, cce.s2.large, cce.s2.xlarge]
+    help: |
+      集群规格（决定控制面规模与主节点机型，不是节点规格）。
+      s2.* 是三控制节点高可用；s1.* 是单控制节点，不要用于生产。
+      选型受"主节点机型在哪些 AZ 提供"约束，实测（cn-southwest-2）：
+        cce.s2.small  -> c7.xlarge.2  仅 2d/2e
+        cce.s2.medium -> c7.2xlarge.2 2a/2d/2e
+        cce.s2.large  -> c7.4xlarge.2 2d/2e/2f  ✅ 唯一能在 DEF 三 AZ 放控制面的规格
+      若把 s2.small/medium 配到含 2f 的 az_list，CCE 会报
+      "volume type SAS is sold out in az cn-southwest-2f"——那是主节点机型
+      在该 AZ 不可用的误导性表述，不是真的磁盘售罄。
+    map_to: terraform.cce_cluster_flavor
 
   - key: nodes_per_az
     value: 1

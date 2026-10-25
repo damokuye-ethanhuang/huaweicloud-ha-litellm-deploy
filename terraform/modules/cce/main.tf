@@ -83,12 +83,18 @@ resource "huaweicloud_cce_node" "workers" {
     size       = var.root_volume_size
     volumetype = var.root_volume_type
     kms_key_id = var.kms_key_id
+    # GPSSD2 (and GPSSD2-like types) are rejected unless both are supplied;
+    # the API error is "GPSSD2 volume type both iops and throughput are required".
+    iops       = var.volume_iops
+    throughput = var.volume_throughput
   }
 
   data_volumes {
     size       = var.data_volume_size
     volumetype = var.data_volume_type
     kms_key_id = var.kms_key_id
+    iops       = var.volume_iops
+    throughput = var.volume_throughput
   }
 
   tags = merge(local.tags, { az = var.availability_zones[count.index % length(var.availability_zones)] })

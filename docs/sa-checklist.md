@@ -25,9 +25,12 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 |---|---|---|---|
 | [ ] | `[必选]` 区域已选定且资源同区域 | 全部资源落在同一 region，避免跨区流量费与延迟 | `preflight` |
 | [ ] | `[必选]` 可用区不少于 2 个 | 3 AZ 可得 3 master HA；2 AZ 时控制面退化为单 master | `preflight` |
-| [ ] | `[必选]` 账号已完成实名与配额检查 | CCE 节点、EIP、RDS、DCS、ELB 各配额够用 | 人工 |
+| [ ] | `[必选]` 账号已完成实名与配额检查 | 逐项核对：ECS 节点 vCPU（3×4=12）、EVS 磁盘（6 块）、EIP（1）、VPC 子网（5）、ELB（1）、RDS（1 主备）、DCS（1 主备）。默认配额常卡在 EIP 与 vCPU，见[上云 CheckList](https://support.huaweicloud.com/intl/zh-cn/bestpractice-cce/cce_bestpractice_00006.html) | 人工 |
 | [ ] | `[条件]` 企业项目 | 多项目共账号时用 `enterprise_project_id` 隔离 | 人工 |
-| [ ] | `[必选]` 部署用的 IAM 用户最小权限 | 不给 `Tenant Administrator`；按服务粒度授权 | 人工 |
+| [ ] | `[必选]` 部署用的 IAM 用户最小权限 | 按服务粒度授权，清单见 `docs/permissions.md` | 人工 |
+| [ ] | `[必选]` CCE 委托（agency） | 首建集群需 `iam:agencies:create`：临时给 `Tenant Administrator`，或预先建好 `cce_admin_trust` 后移除 | 人工 |
+| [ ] | `[条件]` 节点盘加密（`encrypt_node_volumes`） | 开启前必须让委托 `cce_admin_trust` 具备 KMS 权限，否则建节点报 `EVS.2264 get Agency's token failed`；实验环境保持关闭 | 人工 |
+| [ ] | `[条件]` 权限自检 | `./scripts/check-permissions.sh` 全绿再 apply，403 在 plan 阶段发现最便宜 | 脚本 |
 
 ## 2. 网络规划
 

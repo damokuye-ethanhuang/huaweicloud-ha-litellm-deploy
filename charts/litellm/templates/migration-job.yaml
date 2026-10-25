@@ -25,7 +25,10 @@ spec:
         app.kubernetes.io/component: migration
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ include "litellm.serviceAccountName" . }}
+      # No serviceAccountName on purpose: this Job is a pre-install hook, so it
+      # runs before the chart's ServiceAccount exists and fails with
+      # `serviceaccount "litellm" not found`, hanging the release. The migration
+      # only talks to PostgreSQL, so the namespace default SA is enough.
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

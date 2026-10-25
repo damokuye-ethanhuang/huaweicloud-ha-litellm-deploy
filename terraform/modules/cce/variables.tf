@@ -129,9 +129,9 @@ variable "root_volume_size" {
 }
 
 variable "root_volume_type" {
-  description = "System disk type: SSD, SAS, SATA or GPSSD."
+  description = "System disk type: GPSSD2, GPSSD, SSD or SAS."
   type        = string
-  default     = "SSD"
+  default     = "GPSSD2"
 }
 
 variable "data_volume_size" {
@@ -141,9 +141,21 @@ variable "data_volume_size" {
 }
 
 variable "data_volume_type" {
-  description = "Data disk type: SSD, SAS, SATA or GPSSD."
+  description = "Data disk type: GPSSD2, GPSSD, SSD or SAS."
   type        = string
-  default     = "SSD"
+  default     = "GPSSD2"
+}
+
+variable "volume_iops" {
+  description = "IOPS for GPSSD2 volumes. Required by the API when volumetype is GPSSD2."
+  type        = number
+  default     = 3000
+}
+
+variable "volume_throughput" {
+  description = "Throughput (MB/s) for GPSSD2 volumes. Required by the API when volumetype is GPSSD2."
+  type        = number
+  default     = 125
 }
 
 variable "kms_key_id" {

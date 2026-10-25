@@ -59,8 +59,29 @@ resolve_cce_version() {
   "$py" "$REPO/scripts/resolve-cce-version.py" || warn "could not resolve the CCE version; keeping the current value"
 }
 
+resolve_az() {
+  # az_policy=auto: ask the region which AZs are live and which of them offer the
+  # node flavor, then rewrite az_list. Only the resolved list reaches Terraform,
+  # because huaweicloud_availability_zones has no filter argument to express a
+  # preference. az_policy=fixed keeps az_list untouched.
+  local py=""
+  for candidate in "$REPO/.venv-sdk/bin/python" python3; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      py="$candidate"
+      break
+    fi
+  done
+  [ -n "$py" ] || return 0
+  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$REPO/secrets/hw.env" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
+    return 0
+  fi
+  log "resolving availability zones (az_policy from deploy-inputs.yaml)"
+  "$py" "$REPO/scripts/resolve-az.py" || warn "could not resolve AZs; keeping the current az_list"
+}
+
 run_preflight() {
   resolve_cce_version
+  resolve_az
   log "preflight: validating deploy-inputs.yaml"
   python3 "$REPO/scripts/preflight.py" || die "preflight blocked - fix deploy-inputs.yaml and rerun"
   ok "preflight passed; artifacts rendered into out/"
@@ -150,6 +171,7 @@ PY
   helm upgrade --install "$RELEASE" "$REPO/charts/litellm" \
     --namespace "$NAMESPACE" \
     --values "$VALUES" \
+    --set existingSecret=litellm-secrets \
     --wait --timeout "${HELM_TIMEOUT:-25m}"
   ok "gateway deployed"
 }

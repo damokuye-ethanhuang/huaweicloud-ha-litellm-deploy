@@ -33,6 +33,11 @@ output "app_subnet_id" {
   value       = huaweicloud_vpc_subnet.this["app"].id
 }
 
+output "app_subnet_neutron_id" {
+  description = "Neutron subnet id of the app subnet. ELB v3 wants this for vip_subnet_cidr_id, not app_subnet_id."
+  value       = data.huaweicloud_vpc_subnet.app.ipv4_subnet_id
+}
+
 output "data_subnet_id" {
   description = "Data subnet: RDS, DCS and other stateful components."
   value       = huaweicloud_vpc_subnet.this["data"].id

@@ -48,9 +48,13 @@ variable "system_disk_size" {
 }
 
 variable "system_disk_type" {
-  description = "System disk type: SSD, SAS, SATA, GPSSD."
+  # GPSSD2 would be preferred, but huaweicloud_compute_instance exposes no
+  # iops/throughput for the system disk and the API rejects GPSSD2 without them
+  # ("GPSSD2 volume type both iops and throughput are required"). GPSSD needs
+  # neither, so it is the fastest disk this resource can actually request.
+  description = "System disk type: GPSSD, GPSSD2 (needs iops/throughput, unsupported here), SSD or SAS."
   type        = string
-  default     = "SSD"
+  default     = "GPSSD"
 }
 
 variable "admin_password" {
@@ -63,6 +67,27 @@ variable "key_pair" {
   description = "Existing key pair name. Optional; used when SSH keys are preferred over the password."
   type        = string
   default     = ""
+}
+
+variable "eip_type" {
+  description = <<-EOT
+    EIP line type.
+
+    5_bgp (dynamic BGP) is the right default everywhere:
+      - mainland China regions: the "中国大陆访问" line, best routing for
+        domestic operators.
+      - overseas regions: the direct/origin line; there is no separate
+        "China access" line to select there.
+    Only change this if your account is restricted to a carrier line
+    (5_telcom / 5_unicom / 5_mobile) or static BGP (5_sbgp).
+  EOT
+  type        = string
+  default     = "5_bgp"
+
+  validation {
+    condition     = contains(["5_bgp", "5_sbgp", "5_telcom", "5_unicom", "5_mobile"], var.eip_type)
+    error_message = "eip_type must be one of 5_bgp, 5_sbgp, 5_telcom, 5_unicom, 5_mobile."
+  }
 }
 
 variable "eip_bandwidth_size" {
@@ -95,9 +120,10 @@ variable "install_tools" {
 }
 
 variable "kubectl_version" {
-  description = "kubectl version to install on the bastion."
+  description = "kubectl version to install on the bastion. Keep it within one minor version of the cluster (see cce_cluster_version)."
   type        = string
-  default     = "v1.31.4"
+  # 1.31 vs a 1.36 cluster is five minors apart; kubectl only supports +/-1.
+  default = "v1.36.0"
 }
 
 variable "helm_version" {

@@ -340,8 +340,13 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "ops_subnet_cidr": v.get("subnet_ops_cidr"),
         "vpce_subnet_cidr": v.get("subnet_vpce_cidr"),
         "pod_cidr": v.get("pod_cidr") or "172.16.0.0/16",
-        "cce_container_network_type": "overlay_l2",
+        # vpc-router: pods get addresses from the VPC route table, so no extra
+        # container subnet is needed and ELB can route to pods directly. This
+        # must match the Terraform variable default; rendering overlay_l2 here
+        # silently built a different network model than the docs describe.
+        "cce_container_network_type": "vpc-router",
         "cce_node_flavor": v.get("node_flavor"),
+        "cce_cluster_flavor": v.get("cce_cluster_flavor") or "cce.s2.large",
         "cce_cluster_version": v.get("cce_cluster_version") or "",
         "bastion_eip_bandwidth_size": v.get("bastion_eip_bandwidth_mbit") or 100,
 

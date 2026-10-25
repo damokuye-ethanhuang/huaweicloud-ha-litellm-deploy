@@ -30,11 +30,11 @@ locals {
     ops    = { cidr = var.ops_subnet_cidr, name = var.names["subnet_ops"] }
   }
 
-  sg_rules = merge(
+  sg_rule_specs = merge(
     # --- internal ELB: clients and admins in, backends out ---
     {
       for i, cidr in var.client_cidrs : "elb-client-${i}" => {
-        sg        = huaweicloud_networking_secgroup.elb.id
+        sg_key    = "elb"
         direction = "ingress"
         protocol  = "tcp"
         from      = 443
@@ -45,7 +45,7 @@ locals {
     },
     {
       for i, cidr in var.admin_cidrs : "elb-admin-${i}" => {
-        sg        = huaweicloud_networking_secgroup.elb.id
+        sg_key    = "elb"
         direction = "ingress"
         protocol  = "tcp"
         from      = 443
@@ -59,7 +59,7 @@ locals {
     # opened for it.
     {
       "elb-ops" = {
-        sg        = huaweicloud_networking_secgroup.elb.id
+        sg_key    = "elb"
         direction = "ingress"
         protocol  = "tcp"
         from      = 443
@@ -70,7 +70,7 @@ locals {
     },
     {
       "elb-egress" = {
-        sg        = huaweicloud_networking_secgroup.elb.id
+        sg_key    = "elb"
         direction = "egress"
         protocol  = null
         from      = null
@@ -83,7 +83,7 @@ locals {
     # --- data subnet: PostgreSQL and Redis only from the app subnet ---
     {
       "data-postgres" = {
-        sg        = huaweicloud_networking_secgroup.data.id
+        sg_key    = "data"
         direction = "ingress"
         protocol  = "tcp"
         from      = 5432
@@ -92,7 +92,7 @@ locals {
         note      = "PostgreSQL from the app subnet only"
       }
       "data-redis" = {
-        sg        = huaweicloud_networking_secgroup.data.id
+        sg_key    = "data"
         direction = "ingress"
         protocol  = "tcp"
         from      = 6379
@@ -100,8 +100,30 @@ locals {
         cidr      = var.app_subnet_cidr
         note      = "Redis from the app subnet only"
       }
+      # Overlay container network (tunnel mode): pod IPs come from the
+      # container CIDR (172.16.0.0/16 by default), NOT from the app subnet, so
+      # the app-subnet rules above do not cover them. Without these two, the
+      # gateway fails with "P1001: Can't reach database server".
+      "data-postgres-pods" = {
+        sg_key    = "data"
+        direction = "ingress"
+        protocol  = "tcp"
+        from      = 5432
+        to        = 5432
+        cidr      = var.pod_cidr
+        note      = "PostgreSQL from the overlay pod network"
+      }
+      "data-redis-pods" = {
+        sg_key    = "data"
+        direction = "ingress"
+        protocol  = "tcp"
+        from      = 6379
+        to        = 6379
+        cidr      = var.pod_cidr
+        note      = "Redis from the overlay pod network"
+      }
       "data-egress" = {
-        sg        = huaweicloud_networking_secgroup.data.id
+        sg_key    = "data"
         direction = "egress"
         protocol  = null
         from      = null
@@ -111,7 +133,7 @@ locals {
       }
       # Debugging only: the bastion may reach the data layer, pods may not.
       "data-ops-postgres" = {
-        sg        = huaweicloud_networking_secgroup.data.id
+        sg_key    = "data"
         direction = "ingress"
         protocol  = "tcp"
         from      = 5432
@@ -120,7 +142,7 @@ locals {
         note      = "psql from the ops subnet"
       }
       "data-ops-redis" = {
-        sg        = huaweicloud_networking_secgroup.data.id
+        sg_key    = "data"
         direction = "ingress"
         protocol  = "tcp"
         from      = 6379
@@ -133,7 +155,7 @@ locals {
     # --- bastion: SSH in from the operator ranges, out to the VPC ---
     {
       for i, cidr in var.bastion_ssh_cidrs : "bastion-ssh-${i}" => {
-        sg        = huaweicloud_networking_secgroup.bastion.id
+        sg_key    = "bastion"
         direction = "ingress"
         protocol  = "tcp"
         from      = 22
@@ -144,7 +166,7 @@ locals {
     },
     {
       "bastion-egress-vpc" = {
-        sg        = huaweicloud_networking_secgroup.bastion.id
+        sg_key    = "bastion"
         direction = "egress"
         protocol  = null
         from      = null
@@ -152,17 +174,72 @@ locals {
         cidr      = var.vpc_cidr
         note      = "kubectl/helm to the CCE API and the internal ELB"
       }
+      "bastion-egress-dns" = {
+        sg_key    = "bastion"
+        direction = "egress"
+        protocol  = "udp"
+        from      = 53
+        to        = 53
+        # The VPC resolvers live in 100.125.0.0/16, outside the VPC CIDR, so
+        # without this every name lookup fails and apt/kubectl/helm installs die
+        # with "Temporary failure resolving".
+        cidr = "0.0.0.0/0"
+        note = "DNS to the VPC resolvers"
+      }
       "bastion-egress-https" = {
-        sg        = huaweicloud_networking_secgroup.bastion.id
+        sg_key    = "bastion"
         direction = "egress"
         protocol  = "tcp"
-        from      = 443
-        to        = 443
-        cidr      = "0.0.0.0/0"
-        note      = "Package and chart downloads"
+        # 80 as well: apt fetches over plain HTTP on the stock Ubuntu sources, and
+        # the bootstrap script runs with `set -e`, so a blocked 80 aborts it and
+        # kubectl/helm never get installed.
+        from = 80
+        to   = 443
+        cidr = "0.0.0.0/0"
+        note = "apt (80) plus package and chart downloads (443)"
       }
     },
   )
+
+  # Specs that differ only in key still render the *same* rule, and the API
+  # rejects the duplicate with "conflict in the request" instead of ignoring it.
+  # That happens as soon as client_cidrs, admin_cidrs and the ops subnet overlap
+  # - i.e. the normal lab setup where all three are 10.0.3.0/24 - so collapse on
+  # the rule's identity: security group, direction, protocol, port range, CIDR.
+  sg_ids = {
+    elb     = huaweicloud_networking_secgroup.elb.id
+    data    = huaweicloud_networking_secgroup.data.id
+    bastion = huaweicloud_networking_secgroup.bastion.id
+  }
+
+  # The grouping (... => spec...) form does not error on repeated keys; it
+  # collects them into a list, which is exactly the dedupe that is needed.
+  sg_rule_groups = {
+    for k, spec in local.sg_rule_specs :
+    join("|", [
+      spec.sg_key,
+      spec.direction,
+      coalesce(spec.protocol, "any"),
+      # tostring(null) returns null rather than raising, so try() would not
+      # catch it - coalesce is what skips nulls here.
+      coalesce(tostring(spec.from), "any"),
+      coalesce(tostring(spec.to), "any"),
+      spec.cidr,
+    ]) => spec...
+  }
+
+  sg_rules = {
+    for k, group in local.sg_rule_groups :
+    replace(replace(k, "/", "_"), ".", "_") => {
+      sg        = local.sg_ids[group[0].sg_key]
+      direction = group[0].direction
+      protocol  = group[0].protocol
+      from      = group[0].from
+      to        = group[0].to
+      cidr      = group[0].cidr
+      note      = group[0].note
+    }
+  }
 }
 
 resource "huaweicloud_vpc" "this" {
@@ -170,6 +247,15 @@ resource "huaweicloud_vpc" "this" {
   cidr                  = var.vpc_cidr
   enterprise_project_id = var.enterprise_project_id
   tags                  = local.tags
+}
+
+# ELB v3's `vip_subnet_cidr_id` (exposed by the provider as `ipv4_subnet_id`)
+# wants the NEUTRON subnet id, not the VPC subnet id that this resource has as
+# its `id`. Passing the wrong one fails at apply with the misleading
+# "subnet <id> could not be found" (ELB.8904). The data source resolves the
+# mapping; it is exported as app_subnet_neutron_id.
+data "huaweicloud_vpc_subnet" "app" {
+  id = huaweicloud_vpc_subnet.this["app"].id
 }
 
 resource "huaweicloud_vpc_subnet" "this" {

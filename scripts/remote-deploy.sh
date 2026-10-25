@@ -152,6 +152,7 @@ kubectl -n "$NAMESPACE" create secret generic litellm-secrets \
 
 helm upgrade --install "$RELEASE" ./chart \
   --namespace "$NAMESPACE" --values ./values.yaml \
+  --set existingSecret=litellm-secrets \
   --wait --timeout "$HELM_TIMEOUT"
 echo "release $RELEASE applied; gateway VIP: $GATEWAY"
 SH

@@ -48,6 +48,24 @@ preflight → plan → [operator review] → apply-infra → deploy-app → veri
 To deploy a single stage again after fixing something, call that stage only.
 Every stage is idempotent.
 
+## Terraform tooling via MCP
+
+Two MCP servers are wired into Hermes and available in a new session (they are
+registered at agent startup, so an already-running session does not see them):
+
+| Server | Tools | Use it for |
+|---|---|---|
+| `terraform-registry` (npx `terraform-mcp-server`) | 10 | provider/resource argument schemas, module search, policy lookup — answers "does this provider actually support field X" without guessing |
+| `tfmcp` (docker image `tfmcp:0.2.4`, `-d terraform/examples/cce-ha`) | 84 | local CLI operations: init, validate, saved plans, state analysis, `analyze_terraform` |
+
+`tfmcp` runs in a container with its own Terraform binary and the repo mounted at
+`/workspace`; its global `-d` flag must precede the `mcp` subcommand. It writes
+plan files inside the container, so prefer it for analysis and validation rather
+than as the deploy path — the deploy path stays `./scripts/deploy.sh`, which is
+what the docs and the skill describe.
+
+Both are additive. If either is down, deployment is unaffected.
+
 ## How to collect missing inputs
 
 Run:
