@@ -163,7 +163,7 @@ variable "ssh_ingress_cidrs" {
 # --- Egress ------------------------------------------------------------------
 
 variable "model_endpoint_mode" {
-  description = "vpcep (private model access only), nat (public model APIs allowed) or none (air-gapped)."
+  description = "vpcep (private model access only), nat (public model APIs allowed) or none (air-gapped, the default). none/vpcep create no NAT gateway: the nodes have no public egress and images must arrive via the bastion -> SWR path."
   type        = string
   default     = "vpcep"
 
@@ -502,10 +502,32 @@ variable "litellm_version" {
   default     = "1.106.3"
 }
 
-variable "litellm_image_repository" {
-  description = "Image repository. Point at SWR for China regions."
+variable "image_supply_chain" {
+  description = "swr: bastion pulls upstream, pushes to same-region SWR, pods pull over the intranet (no public egress). direct: nodes can already reach the repository."
   type        = string
-  default     = "ghcr.io/berriai/litellm"
+  default     = "swr"
+
+  validation {
+    condition     = contains(["swr", "direct"], var.image_supply_chain)
+    error_message = "image_supply_chain must be swr or direct."
+  }
+}
+
+variable "swr_org" {
+  description = "SWR organisation (namespace). The gateway image is mirrored to swr.<region>.myhuaweicloud.com/<swr_org>/litellm by scripts/mirror-image.sh."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.image_supply_chain != "swr" || var.swr_org != ""
+    error_message = "image_supply_chain = swr requires swr_org (create it in the SWR console first)."
+  }
+}
+
+variable "direct_image_repository" {
+  description = "Image repository when image_supply_chain = direct (nodes can already reach it without public egress). Ignored in swr mode."
+  type        = string
+  default     = ""
 }
 
 variable "charging_mode" {

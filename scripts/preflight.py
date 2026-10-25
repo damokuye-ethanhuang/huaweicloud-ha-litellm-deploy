@@ -353,6 +353,29 @@ def check_admin_reach(flat: dict[str, Any], report: Report) -> None:
         report.add("admin-reach", OK, "admin_cidrs covers the ops and access subnets")
 
 
+def check_image_supply(flat: dict[str, Any], report: Report) -> None:
+    """In swr mode the image must already be in SWR before deploy-app.
+
+    Nodes have no public egress (that is the design), so a pod that references
+    an upstream registry simply hangs in ImagePullBackOff. The mirror step is
+    therefore part of the deployment, not an optimisation.
+    """
+    chain = (flat.get("image_supply_chain", {}).get("value") or "swr")
+    org = flat.get("swr_org", {}).get("value") or ""
+    if chain != "swr":
+        report.add("image-supply", OK, f"nodes pull directly from their repository ({chain})")
+        return
+    if not org:
+        report.add("image-supply", FAIL, "image_supply_chain = swr but swr_org is empty")
+        return
+    report.add(
+        "image-supply",
+        OK,
+        f"bastion -> swr.{flat.get('region', {}).get('value')}.myhuaweicloud.com/{org}/litellm -> pods; "
+        "run scripts/mirror-image.sh from the bastion before deploy-app",
+    )
+
+
 # ---------------------------------------------------------------- rendering ---
 
 def hcl(v: Any) -> str:
@@ -373,6 +396,8 @@ def merged(flat: dict[str, Any]) -> dict[str, Any]:
     tls = v.get("tls_mode")
     v["enable_https"] = tls in ("elb_cert", "internal_ca")
     mode = v.get("model_endpoint_mode")
+    # NAT exists only for public model APIs. The intranet default (none) and
+    # vpcep both create no NAT: nodes have no public egress.
     v["enable_nat_gateway"] = mode == "nat"
     v["vpce_enabled"] = mode == "vpcep"
     enc = v.get("encryption_mode")
@@ -422,6 +447,8 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "vpn_enabled": v.get("vpn_enabled"),
         "customer_gateway_ip": v.get("customer_gateway_ip") or "0.0.0.0",
         "model_endpoint_mode": v.get("model_endpoint_mode"),
+        "image_supply_chain": v.get("image_supply_chain") or "swr",
+        "swr_org": v.get("swr_org") or "",
         "modelarts_vpce_service_id": v.get("modelarts_vpce_service_id") or "",
         "vpce_enabled": v.get("vpce_enabled"),
         "tls_mode": v.get("tls_mode"),
@@ -448,9 +475,11 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "# Do not edit: change deploy-inputs.yaml and rerun preflight.",
         "",
     ]
+    # Align like `terraform fmt` does, so `fmt -check` stays clean after a render.
+    width = max(len(k) for k in pairs)
     for key, value in pairs.items():
-        lines.append(f"{key} = {hcl(value)}")
-    lines += ["", 'tags = {', f'  owner = {hcl(v.get("owner") or "unknown")}', '  "managed-by" = "terraform"', "}", ""]
+        lines.append(f"{key} = {hcl(value)}".replace(f"{key} =", f"{key.ljust(width)} =", 1))
+    lines += ["", 'tags = {', f'  owner{" " * 8}= {hcl(v.get("owner") or "unknown")}', '  "managed-by" = "terraform"', "}", ""]
     return "\n".join(lines)
 
 
@@ -574,8 +603,9 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 
 | 项 | 值 |
 |---|---|
-| 模型接入方式 | {v.get('model_endpoint_mode')} |
-| NAT 网关 | {'启用' if v.get('enable_nat_gateway') else '不创建'} |
+| 模型接入方式 | {v.get('model_endpoint_mode')}（nat 才会建 NAT） |
+| 镜像供应链 | {'堡垒机 → SWR → Pod 内网拉取' if (v.get('image_supply_chain') or 'swr') == 'swr' else '节点直连仓库'}（org: {v.get('swr_org') or '未填'}） |
+| NAT 网关 | {'创建（仅当模型在公网）' if v.get('enable_nat_gateway') else '不创建（纯内网）'} |
 | ModelArts VPCEP | {'启用' if v.get('vpce_enabled') else '未启用'} |
 | VPN | {'启用' if v.get('vpn_enabled') else '未启用'} |
 | TLS | {v.get('tls_mode')} |
@@ -702,6 +732,7 @@ def main() -> int:
     check_subnet_overlaps(flat, report)
     check_container_cidr(flat, report)
     check_admin_reach(flat, report)
+    check_image_supply(flat, report)
     if not v.get("cce_cluster_version"):
         report.add("cce_cluster_version", WARN, "empty: resolved at deploy time via huaweicloudsdkcce (scripts/resolve-cce-version.py)")
     check_version(str(v.get("litellm_version", "")), report, bool(os.environ.get("ACK_UPGRADE")))

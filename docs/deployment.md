@@ -326,6 +326,15 @@ ssh -i "$BASTION_KEY" root@"$(terraform -chdir=terraform/examples/cce-ha output 
 `--remote` runs `scripts/remote-deploy.sh`: `bundle` → `push` → helm on the
 bastion. Inspect the bundle at `out/bastion/` if a push fails.
 
+**Before the first `deploy-app` of a version** (on the bastion):
+
+```bash
+./scripts/mirror-image.sh <version>     # upstream -> SWR; once per version
+```
+
+`deploy-app` fails fast when the image reference is not an SWR path, with this
+command in the error message.
+
 What it does, in order:
 
 1. writes `kube_config_raw` to `~/.kube/litellm-cce.yaml` (0600);
@@ -459,21 +468,34 @@ issue a tenant key instead ([security](security.md#who-calls-the-gateway)).
   every stored provider credential unreadable
 - budget/cost review: [cost.md](cost.md)
 
-## 8. China-region image mirroring
+## 8. Image supply chain: bastion -> SWR -> pods
 
-`ghcr.io` is unusable from mainland clusters, and pods in a pure-intranet design
-have **no** internet egress at all. The image must therefore be carried in by the
-bastion and served from SWR in the same region:
+This is the **design**, not an optimisation. Nodes have no public egress (no
+NAT gateway is created unless `model_endpoint_mode = nat`), so a pod that
+references any public registry hangs in `ImagePullBackOff` with no error to
+read. The only path an image may take into the cluster is:
+
+    upstream mirror --(bastion, 300 Mbit/s traffic-billed EIP)--> SWR --(intranet)--> pods
+
+Deploy-inputs keys (section `image_supply`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `image_supply_chain` | `swr` | `swr` = the path above; `direct` only when nodes already reach a registry |
+| `swr_org` | – | SWR organisation; `terraform output litellm_image` resolves to `swr.<region>.myhuaweicloud.com/<swr_org>/litellm:<version>` |
+
+Run this on the **bastion** (the only public host), once per version:
 
 ```bash
-# on the bastion
-./push-image.sh <upstream-ref> swr.<region>.myhuaweicloud.com/<org>/litellm:<tag>
+./scripts/mirror-image.sh 1.106.3
 ```
 
-`push-image.sh` runs `preflight-network.sh` first (DNS, TCP 443, registry
-handshake, **authentication**, disk) and verifies the manifest at the destination
-afterwards. Never call `docker push ... | tail` directly: the pipe returns the
-exit status of `tail`, so a rejected push looks like success.
+It pulls from the fastest measured upstream (`ghcr.nju.edu.cn`, ~7 MB/s from
+cn-southwest-2), pushes to SWR, and verifies the manifest at the destination.
+Internally it calls `push-image.sh`, which runs `preflight-network.sh` first
+(DNS, TCP 443, registry handshake, **authentication**, disk). Never call
+`docker push ... | tail` directly: the pipe returns the exit status of `tail`,
+so a rejected push looks like success.
 
 Verified upstream mirrors (2026-10, cn-southwest-2):
 
@@ -492,14 +514,20 @@ POST https://swr-api.<region>.myhuaweicloud.com/v2/manage/utils/secret
 # -> auths[host].auth = base64(user:pass)
 ```
 
-That credential is valid **24 h**; enable "long-term login command" in the SWR
-console for production. Reuse the same user/pass for the cluster pull secret:
+That credential is valid **24 h**. Both deployment paths refresh the
+`swr-cred` pull secret automatically on every `deploy-app` (via
+`mirror-image.sh --print-creds`), so an expired secret surfaces as a fast local
+failure instead of `ImagePullBackOff` two days later. The manual command, for
+reference:
 
 ```bash
 kubectl -n litellm create secret docker-registry swr-cred \
   --docker-server=swr.<region>.myhuaweicloud.com \
   --docker-username=<user> --docker-password=<pass>
 ```
+
+`deploy-app` refuses to install an image that still points at a public registry
+while `image_supply_chain = swr`, with the mirror command in the error.
 
 Registry vs management endpoint differ and are not interchangeable:
 `swr.<region>` (registry, `/v2/` -> 401) and `swr-api.<region>` (management).

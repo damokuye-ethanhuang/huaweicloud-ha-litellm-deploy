@@ -316,6 +316,7 @@ Service `type=LoadBalancer` 绑 ELB。第二轮改成：
 | 18 | `terraform destroy` 先删堡垒机后失联 | 销毁顺序错 | 应用 → 集群 → 数据 → 堡垒机；见第 19 条 |
 | 19 | 资源删到一半 state 与云端不一致 | 删除保护、依赖倒序、ELB 归属 | 按第 19 条顺序；ingress 模式下先删 Ingress（ELB 随之删除）再删 VPC |
 | 20 | `-target=module.elb` 在 ingress 模式报 `no matching objects` | 模块 `count = 0` | 用 `module.cce` 或整段跳过，见第 21 条 |
+| 21 | 二轮 plan 里 NAT+EIP 又出现了；镜像又指回 `ghcr.io` | 第一轮已拍板的决策（`--close` NAT、镜像走 SWR）只改了云端/state，没改成 `deploy-inputs.yaml` 的默认值——重构时默认值把决策冲掉了 | 决策必须落到输入项与代码默认值：`model_endpoint_mode=none`（不建 NAT）、`image_supply_chain=swr` + `swr_org`（镜像引用由 Terraform 输出推导），并加 check 块与 deploy-app 前置校验拒绝回退 |
 
 回归基线（第一轮实测，可作为第二轮对照）：3/3 Pod 跨 3 AZ、`/health/readiness`
 200、`/v1/models` 返回配置模型、无 token 401、删 1 副本 60 秒内无 5xx、关 NAT 后

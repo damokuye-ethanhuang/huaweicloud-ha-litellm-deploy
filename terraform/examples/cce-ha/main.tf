@@ -149,10 +149,13 @@ module "network" {
   client_cidrs             = var.allowed_client_cidrs
   admin_cidrs              = var.admin_access_cidrs
   bastion_ssh_cidrs        = var.bastion_enabled ? var.bastion_ssh_cidrs : []
-  enable_nat_gateway       = var.enable_nat_gateway
-  nat_eip_bandwidth_size   = var.nat_eip_bandwidth_size
-  enterprise_project_id    = local.eps_id
-  tags                     = local.common_tags
+  # NAT exists only for public model APIs (model_endpoint_mode = nat). The
+  # default intranet design has NO public egress for nodes: images arrive via
+  # bastion -> SWR, models via VPCEP or in-VPC endpoints.
+  enable_nat_gateway     = var.enable_nat_gateway
+  nat_eip_bandwidth_size = var.nat_eip_bandwidth_size
+  enterprise_project_id  = local.eps_id
+  tags                   = local.common_tags
 }
 
 module "postgres" {
@@ -418,6 +421,13 @@ resource "huaweicloud_aom_prom_instance" "this" {
 # -----------------------------------------------------------------------------
 # Input consistency
 # -----------------------------------------------------------------------------
+
+check "nat_requires_public_models" {
+  assert {
+    condition     = !var.enable_nat_gateway || var.model_endpoint_mode == "nat"
+    error_message = "enable_nat_gateway = true but model_endpoint_mode != nat. The intranet design has no public egress for nodes; images come in via the bastion -> SWR path. Set model_endpoint_mode = nat only if the model APIs are genuinely on the public internet."
+  }
+}
 
 check "ingress_owns_the_vip" {
   assert {

@@ -143,6 +143,34 @@ run_app() {
   kubectl -n "$NAMESPACE" create secret generic litellm-secrets \
     "${secret_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+  # SWR pull secret (supply chain = swr): same 24h credential mirror-image.sh
+  # uses; refreshed on every deploy-app so an expired secret never surfaces as
+  # ImagePullBackOff days later.
+  case "$IMAGE" in
+    swr.*.myhuaweicloud.com/*)
+      swr_region="${IMAGE#swr.}"; swr_region="${swr_region%%.*}"
+      if creds="$(SWR_REGION="$swr_region" "$REPO/scripts/mirror-image.sh" --print-creds)"; then
+        read -r swr_user swr_pass <<<"$creds"
+        kubectl -n "$NAMESPACE" create secret docker-registry swr-cred \
+          --docker-server="swr.${swr_region}.myhuaweicloud.com" \
+          --docker-username="$swr_user" --docker-password="$swr_pass" \
+          --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+        log "swr pull secret refreshed (valid 24h)"
+      else
+        warn "SWR credential fetch failed; keeping the existing swr-cred secret"
+      fi
+      ;;
+  esac
+
+  # Nodes have no public egress. Deploying an upstream registry reference in
+  # swr mode guarantees ImagePullBackOff, so fail here with the fix in hand.
+  case "$IMAGE" in
+    swr.*.myhuaweicloud.com/*) ;;
+    ghcr.io/*|docker.io/*|ghcr.nju.edu.cn/*)
+      die "image is '$IMAGE' but the supply chain is swr: run scripts/mirror-image.sh <tag> on the bastion first (terraform output litellm_image shows the expected reference)"
+      ;;
+  esac
+
   VALUES="$(mktemp)"
   trap 'rm -f "$VALUES"' EXIT
   python3 "$REPO/scripts/render-helm-values.py" \

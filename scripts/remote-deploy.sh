@@ -86,6 +86,15 @@ cmd_bundle() {
     die "loadbalancer_id is empty; did apply-infra finish?"
   fi
 
+  # Same guard as deploy.sh: the bundle is executed on the bastion, but the
+  # pods pull from the nodes, which have no public egress.
+  case "$image" in
+    swr.*.myhuaweicloud.com/*) ;;
+    ghcr.io/*|docker.io/*|ghcr.nju.edu.cn/*)
+      die "image is '$image' but the supply chain is swr: run scripts/mirror-image.sh on the bastion first"
+      ;;
+  esac
+
   # Helm values: rendered models/fallbacks + ELB/Ingress wiring + image. One
   # renderer for both paths, so the bastion applies exactly what deploy.sh would.
   python3 "$REPO/scripts/render-helm-values.py" \
@@ -115,8 +124,22 @@ cmd_bundle() {
   cp -R "$REPO/charts/litellm" "$BUNDLE_DIR/chart"
   cp "$REPO/scripts/smoke-test.sh" "$REPO/scripts/lib.sh" "$BUNDLE_DIR/"
 
-  printf 'NAMESPACE=%s\nRELEASE=%s\nHELM_TIMEOUT=%s\nGATEWAY=%s\nELB_MODE=%s\nCERT_ID=%s\n' \
-    "$NAMESPACE" "$RELEASE" "$HELM_TIMEOUT" "$gateway" "$mode" "$cert" >"$BUNDLE_DIR/meta.env"
+  # SWR pull secret: pods authenticate against the intranet SWR endpoint with
+  # the 24h temporary login. Fetched here (AK/SK live on the operator machine);
+  # the bastion gets only the resulting credential, never the AK/SK.
+  if [ "${image#swr.}" != "$image" ]; then
+    log "fetching SWR pull credential (valid 24h)"
+    SWR_REGION="${image#swr.}"; SWR_REGION="${SWR_REGION%%.*}"
+    if creds="$(SWR_REGION="$SWR_REGION" "$REPO/scripts/mirror-image.sh" --print-creds)"; then
+      printf '%s\n' "$creds" >"$BUNDLE_DIR/swr-cred.env"
+      chmod 600 "$BUNDLE_DIR/swr-cred.env"
+    else
+      warn "could not fetch SWR credential: $creds - create the pull secret manually (docs/deployment.md §8)"
+    fi
+  fi
+
+  printf 'NAMESPACE=%s\nRELEASE=%s\nHELM_TIMEOUT=%s\nGATEWAY=%s\nELB_MODE=%s\nCERT_ID=%s\nIMAGE_REPOSITORY=%s\n' \
+    "$NAMESPACE" "$RELEASE" "$HELM_TIMEOUT" "$gateway" "$mode" "$cert" "${image%:*}" >"$BUNDLE_DIR/meta.env"
 
   # Everything the bastion executes lives here; it needs only kubectl + helm.
   cat >"$BUNDLE_DIR/install.sh" <<'SH'
@@ -139,6 +162,20 @@ kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "
 kubectl -n "$NAMESPACE" create secret generic litellm-secrets \
   --from-env-file=./app.env --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+# Refresh the SWR pull secret when the bundle carries a fresh credential;
+# pods pull over the intranet and cannot fall back to a public registry.
+if [ -f ./swr-cred.env ]; then
+  read -r swr_user swr_pass < ./swr-cred.env
+  if [ -n "$swr_user" ] && [ -n "$swr_pass" ]; then
+    swr_server="$(printf '%s' "$IMAGE_REPOSITORY" | sed 's#/.*##')"
+    kubectl -n "$NAMESPACE" create secret docker-registry swr-cred \
+      --docker-server="$swr_server" \
+      --docker-username="$swr_user" --docker-password="$swr_pass" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    echo "swr pull secret refreshed (expires in 24h)"
+  fi
+fi
+
 helm upgrade --install "$RELEASE" ./chart \
   --namespace "$NAMESPACE" --values ./values.yaml \
   --set existingSecret=litellm-secrets \
@@ -157,7 +194,7 @@ cmd_push() {
   log "uploading bundle to ${REMOTE_HOST}:${REMOTE_DIR}"
   tar czf - -C "$BUNDLE_DIR" . |
     "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "${SSH_TARGET[@]}" \
-      "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR' && tar xzf - -C '$REMOTE_DIR' && chmod 700 '$REMOTE_DIR' && chmod 600 '$REMOTE_DIR'/app.env '$REMOTE_DIR'/kubeconfig && echo uploaded"
+      "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR' && tar xzf - -C '$REMOTE_DIR' && chmod 700 '$REMOTE_DIR' && chmod 600 '$REMOTE_DIR'/app.env '$REMOTE_DIR'/kubeconfig '$REMOTE_DIR'/swr-cred.env 2>/dev/null || true && echo uploaded"
   ok "bundle uploaded"
 }
 

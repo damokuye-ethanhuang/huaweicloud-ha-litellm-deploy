@@ -58,6 +58,14 @@ gateway** — the CCE API has no public endpoint and the ELB is internal.
    VIP from `kubectl get ingress ... .status.loadBalancer.ingress[0].ip`. Use
    `elb_mode = standalone` only when something outside CCE must own the ELB.
 
+3. **Nodes have no public egress, ever.** No NAT gateway is created unless
+   `model_endpoint_mode = nat` (public model APIs). Images travel
+   bastion -> SWR -> pods (`image_supply_chain = swr`, `swr_org` in
+   deploy-inputs): run `scripts/mirror-image.sh <version>` on the bastion
+   before the first `deploy-app` of a version. `deploy-app` refuses an image
+   that still points at a public registry, and both deploy paths refresh the
+   24h `swr-cred` pull secret automatically.
+
 The bastion is the only host with a public EIP. `--remote` makes the handoff
 automatic: it bundles rendered values, the chart, the Secret contents and the
 kubeconfig, uploads them, and runs helm there. The bastion needs **only kubectl
@@ -175,7 +183,7 @@ to re-run the Job when a release died after the hook was garbage-collected.
 | credentials `FAIL` | ask the operator to run `./scripts/creds.sh set` themselves; never accept AK/SK in chat |
 | `ssh` to bastion hangs | `bastion_ssh_cidrs` does not include their egress; fix input, re-apply |
 | helm cannot reach cluster | you are not on the bastion — use `--remote` |
-| `ImagePullBackOff` | image not mirrored to SWR, or pull secret wrong |
+| `ImagePullBackOff` | image never mirrored to SWR (`mirror-image.sh` on the bastion), or the 24h `swr-cred` expired - redeploy to refresh |
 | migration job fails | read its logs; do not scale pods to work around it |
 | Ingress has no `ADDRESS` | controller has not reconciled; check the ENI quota and that `elb_virsubnet_ids` are real neutron subnet ids |
 | destroy blocked by `ELB.8917` | `elb_deletion_protection = true`; set false, apply once, destroy |

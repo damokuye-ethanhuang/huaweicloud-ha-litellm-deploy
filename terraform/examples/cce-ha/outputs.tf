@@ -27,8 +27,12 @@ output "ingress_elb" {
 }
 
 output "litellm_image" {
-  description = "Container image reference used by the Helm release."
-  value       = "${var.litellm_image_repository}:${var.litellm_version}"
+  description = "Container image reference used by the Helm release. With image_supply_chain = swr this is the same-region SWR path; nodes have no public egress, so anything else must already be reachable from the VPC."
+  value = (
+    var.image_supply_chain == "swr" ?
+    "swr.${var.region}.myhuaweicloud.com/${var.swr_org}/litellm:${var.litellm_version}" :
+    "${var.direct_image_repository}:${var.litellm_version}"
+  )
 }
 
 output "loadbalancer_id" {
