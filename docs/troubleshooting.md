@@ -264,6 +264,46 @@ redeploy, or raise the RDS parameter group's `max_connections` and restart the
 instance. Prefer lowering the pool: the gateway does not need a large pool
 because requests are long and few, not short and many.
 
+## Destroying a test stack
+
+`terraform destroy` has two deliberate guards and two platform states that can
+stop it halfway. All four are expected, none of them means the state file is
+corrupt.
+
+### `random_password.salt_key has lifecycle.prevent_destroy set`
+
+That guard exists so a re-apply can never rotate `LITELLM_SALT_KEY` (it would
+make every stored provider credential unreadable). A full teardown has to lift
+it on purpose:
+
+```bash
+# flip to false, destroy, flip back and commit - never leave it false
+terraform -chdir=terraform/examples/cce-ha destroy -refresh=false
+```
+
+### `Instance cannot be destroyed` / `DBS.301139 The instance is stopped`
+
+RDS refuses to be deleted while stopped ("Reboot it before deleting it"), and a
+reboot of a stopped instance can itself be rejected with
+`DBS.200452 Another operation is being performed ... or the DB instance is
+faulty`. Start it from the console first, then re-run destroy. Deleting the
+database resource inside a stopped instance hangs for ten minutes and then
+fails, so do not start destroy until the instance is ACTIVE.
+
+### `CCE.01403001 It's forbidden to delete hosts on current cluster status`
+
+A hibernated cluster refuses node deletion (status `Hibernation`). Wake it in
+the console, wait for `Available`, then re-run destroy. Kubernetes API calls
+also fail in this state with `dial tcp <api>:5443: i/o timeout`, which looks
+like a network fault and is not one.
+
+### Order that avoids most of the pain
+
+1. `kubectl delete ns litellm` (in ingress mode this is what removes the ELB
+   and its ENIs, so the VPC is not held by a lingering ENI);
+2. destroy CCE, then RDS (must be ACTIVE), then the network layer;
+3. confirm no EIP is still allocated - a leftover EIP keeps billing silently.
+
 ## Bastion access
 
 ### `Permission denied (publickey)` although the key is registered

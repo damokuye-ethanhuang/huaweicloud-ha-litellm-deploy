@@ -89,7 +89,8 @@ resource "random_password" "salt_key" {
   lifecycle {
     # LITELLM_SALT_KEY encrypts provider credentials stored in the database.
     # Replacing it makes every stored credential unreadable, so Terraform must
-    # never regenerate it implicitly.
+    # never regenerate it implicitly. A full teardown has to lift this guard
+    # deliberately (see docs/troubleshooting.md "Destroying a test stack").
     prevent_destroy = true
   }
 }
