@@ -439,15 +439,68 @@ issue a tenant key instead ([security](security.md#who-calls-the-gateway)).
 
 ## 8. China-region image mirroring
 
-If the cluster cannot reach `ghcr.io`:
+`ghcr.io` is unusable from mainland clusters, and pods in a pure-intranet design
+have **no** internet egress at all. The image must therefore be carried in by the
+bastion and served from SWR in the same region:
 
 ```bash
-SWR_REGION=cn-southwest-2 SWR_ORG=my-org ./scripts/mirror-image.sh 1.106.3
+# on the bastion
+./push-image.sh <upstream-ref> swr.<region>.myhuaweicloud.com/<org>/litellm:<tag>
 ```
 
-Then set the repository in `deploy-inputs.yaml`
-(`image_repository`) and re-run `deploy-app`. SWR login uses `{region}@{AK}` as
-the username; the script handles it.
+`push-image.sh` runs `preflight-network.sh` first (DNS, TCP 443, registry
+handshake, **authentication**, disk) and verifies the manifest at the destination
+afterwards. Never call `docker push ... | tail` directly: the pipe returns the
+exit status of `tail`, so a rejected push looks like success.
+
+Verified upstream mirrors (2026-10, cn-southwest-2):
+
+| Source | Measured | Note |
+|---|---|---|
+| `ghcr.nju.edu.cn` | 7.0 MB/s | used by the bastion to pull |
+| `ghcr.io` direct | hangs | not reachable from nodes |
+| SWR same-region | internal `100.125.x` | the only correct source for pods |
+
+**SWR authentication** — `docker login -u {region}@{AK} -p {SK}` is **rejected**
+with `denied: Authenticate Error`. Use the temporary login credential instead:
+
+```bash
+# POST (GET returns 404), X-Auth-Token = IAM token for the project
+POST https://swr-api.<region>.myhuaweicloud.com/v2/manage/utils/secret
+# -> auths[host].auth = base64(user:pass)
+```
+
+That credential is valid **24 h**; enable "long-term login command" in the SWR
+console for production. Reuse the same user/pass for the cluster pull secret:
+
+```bash
+kubectl -n litellm create secret docker-registry swr-cred \
+  --docker-server=swr.<region>.myhuaweicloud.com \
+  --docker-username=<user> --docker-password=<pass>
+```
+
+Registry vs management endpoint differ and are not interchangeable:
+`swr.<region>` (registry, `/v2/` -> 401) and `swr-api.<region>` (management).
+
+## 8.1 Node sizing (measured, not guessed)
+
+Official LiteLLM sizing is **1 vCPU / 4 GiB per pod, requests == limits**
+(docs.litellm.ai/docs/proxy/prod). The node must satisfy that *plus* CCE system
+pods (~0.9 GiB RAM, and up to ~3.25 vCPU of requests on a 4-vCPU node):
+
+| Flavor | Allocatable | Verdict |
+|---|---|---|
+| `ac8.xlarge.4` (4C16G) | 3920m CPU | **fails** - system pods hold 3250m, 670m left, a 1-vCPU pod never schedules; replicas collapse into one AZ |
+| `ac8.2xlarge.2` (8C16G) | 7910m CPU | **works** - one replica per AZ, room for a surge pod |
+
+Changing `cce_node_flavor` cannot be done in place: the provider rejects it with
+`flavor_id can't be updated`. Terraform must destroy and recreate the nodes
+(target the node resource, apply, then apply again).
+
+Check the result: `kubectl get pods -o wide` must show the replicas on nodes in
+three different `topology.kubernetes.io/zone` values. The chart's zone spread is
+`DoNotSchedule` on purpose - with `ScheduleAnyway` the scheduler packs all
+replicas into one AZ and a single-zone failure takes the gateway down.
 
 ## 9. Teardown
 
