@@ -49,7 +49,7 @@ flowchart LR
 ```
 
 Pod 运行在容器隧道网络（`overlay_l2`，`172.16.0.0/16`），VPC 不为该网段配路由：
-Pod 访问 RDS/Redis 时源地址被转换为节点地址，所以数据子网只放行应用子网。
+Pod 访问 RDS/Redis 时源地址被转换为节点地址，所以data 子网只放行app 子网。
 
 请求路径：VPC 内客户端 → 内网 ELB（TLS，由 Ingress 创建）→ Service → 三个 Pod 之一
 → 经 NAT 或 ModelArts VPCEP 调用模型。集群外唯一入口是堡垒机（公网 EIP），它只用于

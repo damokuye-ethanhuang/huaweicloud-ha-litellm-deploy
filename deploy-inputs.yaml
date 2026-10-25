@@ -146,21 +146,21 @@ network:
     value: 10.0.0.0/24
     required: true
     validate: subnet_in_vpc
-    help: "接入子网：内网 ELB VIP。运维/堡垒机不放这里，见 subnet_ops_cidr。"
+    help: "access 子网：内网 ELB VIP。运维/堡垒机不放这里，见 subnet_ops_cidr。"
     map_to: terraform.access_subnet_cidr
 
   - key: subnet_app_cidr
     value: 10.0.1.0/24
     required: true
     validate: subnet_in_vpc
-    help: "应用子网：CCE 工作节点。"
+    help: "app 子网：CCE 工作节点。"
     map_to: terraform.app_subnet_cidr
 
   - key: subnet_data_cidr
     value: 10.0.2.0/24
     required: true
     validate: subnet_in_vpc
-    help: "数据子网：RDS、DCS 等所有数据组件。仅应用子网可访问。"
+    help: "data 子网：RDS、DCS 等所有数据组件。仅app 子网可访问。"
     map_to: terraform.data_subnet_cidr
 
   - key: subnet_ops_cidr
@@ -198,7 +198,7 @@ network:
     help: |
       容器网络模型，默认 overlay_l2（容器隧道，VXLAN/OVS）。
       overlay_l2：容器网段与 VPC 解耦，不占 VPC 路由配额，Pod 不能直接绑
-        EIP/安全组，Pod 出 VPC 时由节点做源地址转换，因此数据层只放行应用子网。
+        EIP/安全组，Pod 出 VPC 时由节点做源地址转换，因此数据层只放行app 子网。
       vpc-router：Pod 地址进入 VPC 路由表，能直接从 VPC 访问 Pod IP，受路由配额限制。
       eni：CCE Turbo / 云原生网络 2.0，需要额外的 ENI 子网。
     map_to: terraform.cce_container_network_type
@@ -223,8 +223,8 @@ access:
     validate: cidr_private_v4_list
     help: |
       允许访问 Admin UI 与密钥管理 API 的网段，应比 client_cidrs 更窄。
-      必须同时包含运维子网（堡垒机所在）和接入子网（ELB VIP 所在）：
-      漏掉接入子网时，堡垒机 curl 网关会一直挂住而不报 403，很难定位。
+      必须同时包含运维子网（堡垒机所在）和access 子网（ELB VIP 所在）：
+      漏掉access 子网时，堡垒机 curl 网关会一直挂住而不报 403，很难定位。
     map_to: terraform.admin_access_cidrs
 
   - key: elb_mode
@@ -364,9 +364,9 @@ egress:
     allowed: [vpcep, nat, none]
     help: |
       vpcep：仅通过 ModelArts 私网接入访问模型，无公网出口。
-             （VPCEP 终端节点复用数据子网，不再单独划子网。）
+             （VPCEP 终端节点复用data 子网，不再单独划子网。）
       nat  ：允许网关经 NAT 访问外部模型 API（需要公网）。预置占位地址属此类。
-             （模型出网走应用子网 → NAT，不需要容器子网。）
+             （模型出网走app 子网 → NAT，不需要容器子网。）
       none ：完全隔离，仅使用 VPC 内自建模型。
     map_to: terraform.model_endpoint_mode
 

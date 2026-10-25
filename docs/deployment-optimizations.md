@@ -272,7 +272,7 @@ Service `type=LoadBalancer` 绑 ELB。第二轮改成：
 | 数据层放行 | `app` 子网 + `pod_cidr` | 只放行 `app` 子网 | 隧道模式下 Pod 出 VPC 被节点 SNAT 成节点地址，`pod_cidr` 规则永远不会命中 |
 | ELB 归属 | Terraform 建（`module.elb`） | CCE Ingress 控制器按注解 `kubernetes.io/elb.autocreate` 建 | ELB 与 Ingress 生命周期一致，改端口/证书不用动 Terraform state |
 | Service | `type=LoadBalancer` + ELB 注解 | `type=ClusterIP`，由 Ingress 暴露 | Ingress 才能拿到 L7 能力（多路径、按 Host 分流、WAF/证书统一管） |
-| 前端子网 | ELB VIP 在 `access` | 不变：VIP 仍在 `access`（接入子网），后端在 `app` | `vip_subnet_cidr_id` = 接入子网，`elb_virsubnet_ids` = 后端子网，两者不能混用 |
+| front subnet | ELB VIP 在 `access` | 不变：VIP 仍在 `access`，后端在 `app` | `vip_subnet_cidr_id` = access，`elb_virsubnet_ids` = app（backend），两者不能混用 |
 
 判定口径（写死在代码里，不靠人记）：
 
@@ -301,16 +301,16 @@ Service `type=LoadBalancer` 绑 ELB。第二轮改成：
 | 3 | `CSMS.0401 Failed to encrypt or decrypt the secret value by using KMS` | 瞬时错误，同参数直接调 API 返回 200 | 重试；不要改配置。收尾删掉探测用的 secret |
 | 4 | `EVS.2264` 节点数据盘加密失败 | 集群委托 `cce_admin_trust` 没有 KMS 权限 | `encrypt_node_volumes = false`（默认），或用有 KMS 权限的委托 |
 | 5 | `Unexpected initial node password format` | 随机密码含 `"` `\` `/` 等被拒字符，或长度越界 | 8–26 位、至少三类字符、限定特殊字符集（`random_password.node` 已按此约束） |
-| 6 | `DCS.4872 Do not support security group whitelist` | Redis 5.0/6.0 主备实例不支持安全组白名单 | 不传 `security_group_id`，靠数据子网隔离 + 密码 |
+| 6 | `DCS.4872 Do not support security group whitelist` | Redis 5.0/6.0 主备实例不支持安全组白名单 | 不传 `security_group_id`，靠data 子网隔离 + 密码 |
 | 7 | 副本长期 `Pending`，`FailedScheduling: Insufficient memory` | 按总核数选机型，忽略系统组件占用（约 3.25 核 / 数百 MB） | 按**可分配量**反推：`ac8.2xlarge.2`（8C16G）实测 3 副本可跑，`c7.xlarge.2` 不行 |
 | 8 | `flavor_id can't be updated`（直接改机型） | 节点规格不支持原地变更 | 先把 tfvars 改回旧机型 `destroy` 节点，再切新机型 `apply`；`-replace` 同样失败 |
-| 9 | 迁移 Job `BackoffLimitExceeded`，Pod 连不上 RDS | 当时是 `vpc-router`，Pod 网段未被数据子网放行 | 已由架构消除：`overlay_l2` 下数据子网放行节点子网即可，不再需要 `pod_cidr` 规则 |
+| 9 | 迁移 Job `BackoffLimitExceeded`，Pod 连不上 RDS | 当时是 `vpc-router`，Pod 网段未被data 子网放行 | 已由架构消除：`overlay_l2` 下data 子网放行节点子网即可，不再需要 `pod_cidr` 规则 |
 | 10 | ELB 报 `subnet ... could not be found` | ELB v3 要 **neutron 子网 id**，传 VPC 子网 id 会被拒 | 用 `data.huaweicloud_vpc_subnet` 取 `ipv4_subnet_id`；已封装成 `app_subnet_neutron_id` / `access_subnet_neutron_id` 输出 |
 | 11 | `Deletion Protection of loadbalancer ... is enable`（`ELB.8917`），destroy 卡住 | ELB 默认开删除保护，provider 无对应字段 | 模块默认 `deletion_protection = false`；已建好的实例需先调 API 关保护再删 |
 | 12 | Helm `another operation (install/upgrade/rollback) is in progress` | 上次安装中断留下 `pending-install` 锁 | `helm uninstall --no-hooks <release>` → 删残留 Job → 重装 |
 | 13 | 配置里 3 个模型只加载了 1 个 / 完全没生效 | `config.yaml` 写成多文档（`---`），LiteLLM 只读第一个文档 | ConfigMap 用 `include` + `.Files.Get` 拼成**单文档**；仓库里不允许出现第二个 `---` |
 | 14 | `cce_cluster_version` 填了不支持的版本，plan 阶段被拒 | 各区域支持版本不同且会变 | 留空让 SDK 调 `show_cluster_support_configuration` 解析（`scripts/resolve-cce-version.py`，无凭据时 exit 3） |
-| 15 | 堡垒机 `curl` 网关被拦 | `admin_cidrs` 没包含 `10.0.0.0/24`（接入子网），而堡垒机在 ops 子网 | `admin_cidrs` 必须含接入子网与 ops 子网 |
+| 15 | 堡垒机 `curl` 网关被拦 | `admin_cidrs` 没包含 `10.0.0.0/24`（access 子网），而堡垒机在 ops 子网 | `admin_cidrs` 必须含access 子网与 ops 子网 |
 | 16 | 镜像 push 报 401 / `SWR` 拒绝 AK/SK 直连 | SWR 需要临时登录指令，不接受长期 AK/SK 直接鉴权 | `scripts/mirror-image.sh` 走 `swr auth` 换 docker login |
 | 17 | Pod 拉镜像极慢 / 超时 | 走公网 NAT 拉 Docker Hub | 堡垒机下载 → push SWR → Pod 只从内网 SWR 拉；NAT 可整体关闭（已验证） |
 | 18 | `terraform destroy` 先删堡垒机后失联 | 销毁顺序错 | 应用 → 集群 → 数据 → 堡垒机；见第 19 条 |

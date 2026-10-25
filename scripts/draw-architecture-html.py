@@ -127,8 +127,8 @@ text(vx + 20, vy + 30, "VPC 10.0.0.0/22 · 纯内网", 16, "700")
 text(vx + 240, vy + 30, "唯一公网出口是下方堡垒机的 EIP；集群与网关均无公网地址", 12, fill=C["muted"])
 
 # access subnet (front)
-box(vx + 20, vy + 80, 300, 170, "接入子网 10.0.0.0/24", [
-    "CCE 前端子网 · ELB VIP 所在",
+box(vx + 20, vy + 80, 300, 170, "access subnet 10.0.0.0/24", [
+    "CCE front subnet · ELB VIP",
     "仅接受 client_cidrs / admin_cidrs",
 ], fill=C["access"], stroke="#a9c6e4", badge="front")
 box(vx + 40, vy + 152, 260, 62, "内网 ELB（独享型 L7）", [
@@ -136,9 +136,9 @@ box(vx + 40, vy + 152, 260, 62, "内网 ELB（独享型 L7）", [
 ], fill="#fff", stroke=C["elb"], title_size=13, body_size=11)
 
 # app subnet (backend)
-box(vx + 340, vy + 80, 380, 330, "应用子网 10.0.1.0/24", [
-    "CCE 后端子网 · 3 工作节点 1/AZ",
-    "ac8.2xlarge.2 → 二次测试 x1.8u16g",
+box(vx + 340, vy + 80, 380, 330, "app subnet 10.0.1.0/24", [
+    "CCE backend subnet · 3 节点 1/AZ",
+    "x1.8u16g · 可分配 CPU 约 4.75 核",
 ], fill=C["app"], stroke="#a9d3ba", badge="backend")
 box(vx + 358, vy + 148, 344, 44, "Ingress（ingressClassName: cce）", [], fill="#fff",
     stroke=C["ing"], title_size=13)
@@ -153,21 +153,21 @@ for i, az in enumerate(("2d", "2e", "2f")):
     text(x + 54, vy + 376, "172.16.x/28", 10, fill=C["muted"], anchor="middle")
 
 # data subnet
-box(vx + 740, vy + 80, 300, 330, "数据子网 10.0.2.0/24", [
-    "只放行应用子网（节点源地址）",
-    "不放行 pod_cidr（隧道模式无意义）",
+box(vx + 730, vy + 80, 310, 330, "data subnet 10.0.2.0/24", [
+    "仅接受来自 app 子网的访问",
+    "pod_cidr 无需放行（隧道模式）",
 ], fill=C["data"], stroke="#e5c3a3", badge="data")
-box(vx + 760, vy + 152, 260, 96, "RDS PostgreSQL 16", [
+box(vx + 748, vy + 152, 274, 96, "RDS PostgreSQL 16", [
     "主备 HA",
-    "空库，表由 Prisma 迁移建",
+    "建库不建表，表由 Prisma 迁移",
 ], fill="#fff", stroke=C["db"], title_size=13, body_size=11)
-box(vx + 760, vy + 264, 260, 96, "DCS Redis 7", [
+box(vx + 748, vy + 264, 274, 96, "DCS Redis 7", [
     "主备 8G",
-    "不挂安全组（5.0/6.0）",
+    "5.0/6.0 不支持安全组",
 ], fill="#fff", stroke=C["redis"], title_size=13, body_size=11)
 
 # ops subnet
-box(vx + 20, vy + 430, 440, 170, "运维子网 10.0.3.0/24", [
+box(vx + 20, vy + 430, 440, 170, "ops subnet 10.0.3.0/24", [
     "部署、helm、排障的唯一入口",
     "可达 VPC 内 6443 / 443 / 5432 / 6379",
 ], fill=C["ops"], stroke="#c9b8e2", badge="ops")
@@ -175,7 +175,7 @@ box(vx + 40, vy + 490, 280, 56, "堡垒机（唯一公网 EIP）", ["SSH 仅来�
     fill="#fff", stroke=C["bastion"], title_size=13, body_size=11)
 
 # vpce subnet (optional)
-box(vx + 500, vy + 430, 250, 170, "VPCE 子网 10.0.4.0/26", [
+box(vx + 500, vy + 430, 250, 170, "vpce subnet 10.0.4.0/26", [
     "可选，默认不启用",
     "ModelArts / MaaS 私网端点",
 ], fill=C["vpce"], stroke="#c7d0da", dash="5 4", badge="optional")
@@ -248,18 +248,18 @@ TABLES = f'''
 <table>
 <thead><tr><th>子网</th><th>CIDR</th><th>角色</th><th>谁可以访问</th></tr></thead>
 <tbody>
-<tr><td>access</td><td>10.0.0.0/24</td><td><b>接入子网 / CCE 前端子网</b>：ELB VIP</td><td>client_cidrs、admin_cidrs、运维子网</td></tr>
-<tr><td>app</td><td>10.0.1.0/24</td><td><b>应用子网 / ELB 后端子网</b>：3 个工作节点</td><td>接入子网、运维子网</td></tr>
-<tr><td>data</td><td>10.0.2.0/24</td><td>RDS、DCS</td><td>应用子网（节点源地址）、运维子网</td></tr>
-<tr><td>ops</td><td>10.0.3.0/24</td><td>堡垒机</td><td>SSH 来源 bastion_ssh_cidrs</td></tr>
-<tr><td>vpce</td><td>10.0.4.0/26</td><td>ModelArts/MaaS 私网端点（可选）</td><td>仅应用子网</td></tr>
+<tr><td>access</td><td>10.0.0.0/24</td><td><b>access subnet（CCE front）</b>：ELB VIP</td><td>client_cidrs、admin_cidrs、ops</td></tr>
+<tr><td>app</td><td>10.0.1.0/24</td><td><b>app subnet（ELB backend）</b>：3 个工作节点</td><td>access subnet、ops subnet</td></tr>
+<tr><td>data</td><td>10.0.2.0/24</td><td>RDS、DCS</td><td>app subnet（节点源地址）、ops subnet</td></tr>
+<tr><td>ops</td><td>10.0.3.0/24</td><td>堡垒机（bastion）</td><td>SSH 来源 bastion_ssh_cidrs</td></tr>
+<tr><td>vpce</td><td>10.0.4.0/26</td><td>ModelArts/MaaS 私网端点（可选）</td><td>仅 app</td></tr>
 <tr><td>容器网段</td><td>172.16.0.0/16</td><td>overlay_l2（VXLAN），按 /28 分给节点</td><td>不参与 VPC 路由</td></tr>
 </tbody></table>
 
 <h2>请求链路</h2>
 <ol>
 <li>调用方（VPC 内或对等连接）访问 <code>https://&lt;ELB VIP&gt;/v1/chat/completions</code>，带 virtual key。公网无路径。</li>
-<li>ELB 由 <b>CCE Ingress 控制器</b>按 <code>kubernetes.io/elb.autocreate</code> 创建：独享型、<code>type: inner</code>、L7，VIP 落在接入子网。</li>
+<li>ELB 由 <b>CCE Ingress 控制器</b>按 <code>kubernetes.io/elb.autocreate</code> 创建：独享型、<code>type: inner</code>、L7，VIP 落在 access。</li>
 <li>Ingress → Service（ClusterIP）→ 三个节点上的 pod 之一，按 <code>/health/readiness</code> 剔除故障副本。</li>
 <li>鉴权与用量元数据来自 PostgreSQL；限流计数与缓存来自 Redis。</li>
 <li>路由按 <code>deploy-inputs.yaml</code> 的 <code>models[]</code> 生成，主备模型互为 fallback。</li>
@@ -276,7 +276,7 @@ TABLES = f'''
 
 <h2>两个必须记住的约束</h2>
 <ul>
-<li><b>隧道网络下 pod IP 不可路由。</b>Pod 访问 RDS/Redis 时源地址被节点 SNAT 成节点地址，所以数据子网只放行应用子网；放行 <code>pod_cidr</code> 是无效规则。</li>
+<li><b>隧道网络下 pod IP 不可路由。</b>Pod 访问 RDS/Redis 时源地址被节点 SNAT 成节点地址，所以 data 只放行 app；放行 <code>pod_cidr</code> 是无效规则。</li>
 <li><b>三段地址不能重叠。</b>VPC <code>10.0.0.0/22</code>、容器 <code>172.16.0.0/16</code>、Service <code>10.247.0.0/16</code>。重叠不会在建集群时报错，而是在 Pod 连不上数据库时才暴露。</li>
 </ul>
 

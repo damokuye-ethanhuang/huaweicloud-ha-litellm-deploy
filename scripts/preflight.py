@@ -558,12 +558,12 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 |---|---|
 | 区域 | {v.get('region')} ({v.get('site_type')}) |
 | VPC | {v.get('vpc_cidr')} |
-| 应用子网 | {v.get('subnet_app_cidr')} |
-| 数据子网 | {v.get('subnet_data_cidr')} |
+| app 子网 | {v.get('subnet_app_cidr')} |
+| data 子网 | {v.get('subnet_data_cidr')} |
 | 运维子网 | {v.get('subnet_ops_cidr')}（堡垒机所在，可达 VPC 内全部服务） |
 | VPCE 子网 | {v.get('subnet_vpce_cidr')} |
 | 容器网络 | `{v.get('cce_container_network_type') or 'overlay_l2'}`，网段 {v.get('pod_cidr') or '172.16.0.0/16'}（不占 VPC 地址、不走 VPC 路由） |
-| CCE 前端子网 | 接入子网 {v.get('subnet_access_cidr')}（ELB VIP 所在；后端在应用子网 {v.get('subnet_app_cidr')}） |
+| CCE front subnet | access 子网 {v.get('subnet_access_cidr')}（ELB VIP 所在；后端在app 子网 {v.get('subnet_app_cidr')}） |
 | 允许调用 | {", ".join(v.get('client_cidrs') or []) or "(未填)"} |
 | 允许管理 | {", ".join(v.get('admin_cidrs') or []) or "(未填)"} |
 | ELB 来源 | {'Ingress 控制器自动创建（Terraform 不建）' if (v.get('elb_mode') or 'ingress') == 'ingress' else 'Terraform 直接创建'} |

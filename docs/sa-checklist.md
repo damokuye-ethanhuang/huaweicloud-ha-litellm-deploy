@@ -38,7 +38,7 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 |---|---|---|---|
 | [ ] | `[必选]` VPC 网段不与对端冲突 | 要连 IDC / 其他 VPC 时先对齐网段，`/22` 起 | `preflight` |
 | [ ] | `[必选]` 三子网按角色拆分 | access / app / data，每段 `/24` | `preflight` |
-| [ ] | `[必选]` 数据子网只对应用子网开放 | RDS/DCS 安全组源为 app 网段，不是 `0.0.0.0/0` | `preflight` |
+| [ ] | `[必选]` data 子网只对app 子网开放 | RDS/DCS 安全组源为 app 网段，不是 `0.0.0.0/0` | `preflight` |
 | [ ] | `[必选]` 容器网段三选三不重叠 | `overlay_l2` 的 `pod_cidr`（默认 `172.16.0.0/16`）不能与 VPC `10.0.0.0/22`、Service `10.247.0.0/16`、对端网段重叠 | `preflight` / `terraform validate` |
 | [ ] | `[条件]` VPCE 子网 | 要访问 ModelArts/MaaS 私网端点时启用，`/27` 足够 | `preflight` |
 | [ ] | `[条件]` VPN / 专线 | 客户端在内网才需要；网段与 `client_cidrs` 对齐 | 人工 |

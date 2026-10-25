@@ -24,8 +24,8 @@ of silently overlapping something:
 
 | Subnet | CIDR | Holds | Ingress |
 |---|---|---|---|
-| access (**接入子网 = CCE 前端子网**) | /24 | Internal ELB VIP, created by the Ingress controller | `client_cidrs`, `admin_cidrs`, ops subnet |
-| app (**应用子网 = ELB 后端子网**) | /24 | CCE worker nodes | from access, from ops |
+| access (**access = CCE front subnet**) | /24 | Internal ELB VIP, created by the Ingress controller | `client_cidrs`, `admin_cidrs`, ops subnet |
+| app (**app subnet = ELB backend**) | /24 | CCE worker nodes | from access, from ops |
 | data | /24 | RDS, DCS | 5432/6379 from app and ops only |
 | ops | /24 | The bastion, future jump hosts | SSH from `bastion_ssh_cidrs` |
 | vpce | /26 | ModelArts endpoint ENIs | optional, off by default |
