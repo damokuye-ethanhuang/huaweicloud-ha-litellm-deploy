@@ -216,6 +216,31 @@ run_verify() {
   ok "verification passed"
 }
 
+run_bastion_key() {
+  # Terraform owns the keypair. Write the private half somewhere the SSH/rsync
+  # paths can use, 0600, inside .local (gitignored).
+  local out="$REPO/.local/bastion_key"
+  local key
+  key="$(terraform_output "$TF_DIR" bastion_private_key 2>/dev/null || true)"
+  if [ -z "$key" ]; then
+    if [ -f "$out" ]; then
+      log "no Terraform-generated key (operator supplied one); keeping $out"
+      return 0
+    fi
+    die "bastion_private_key is empty: the operator supplied bastion_public_key, use their private key"
+  fi
+  mkdir -p "$(dirname "$out")"
+  ( umask 077; printf '%s\n' "$key" >"$out" )
+  chmod 600 "$out"
+  # ssh(1) reads <key>.pub to decide which key to offer. A stale .pub makes it
+  # offer a key the server never received, and every login fails as "Permission
+  # denied (publickey)" while the private half is perfectly fine.
+  ssh-keygen -y -f "$out" >"$out.pub" 2>/dev/null || rm -f "$out.pub"
+  [ -f "$out.pub" ] && chmod 644 "$out.pub"
+  ok "wrote $out"
+  log "ssh -i $out root@$(terraform_output "$TF_DIR" bastion_public_ip 2>/dev/null || echo '<bastion-ip>')"
+}
+
 if [ "$REMOTE" = "1" ]; then
   # In-cluster stages cannot run here: hand the whole bundle to the bastion.
   case "$STAGE" in
@@ -230,6 +255,7 @@ case "$STAGE" in
   apply-infra) run_apply ;;
   deploy-app) run_app ;;
   verify) run_verify ;;
+  bastion-key) run_bastion_key ;;
   all)
     run_plan
     run_apply
@@ -237,6 +263,6 @@ case "$STAGE" in
     run_verify
     ;;
   *)
-    die "unknown stage '$STAGE' (preflight|plan|apply-infra|deploy-app|verify|all)"
+    die "unknown stage '$STAGE' (preflight|plan|apply-infra|deploy-app|verify|bastion-key|all)"
     ;;
 esac

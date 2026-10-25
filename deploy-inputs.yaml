@@ -265,13 +265,28 @@ access:
       运维 PC 只是普通电脑：SSH 到堡垒机之后，所有命令在堡垒机上跑。
     map_to: terraform.bastion_enabled
 
+  - key: bastion_public_key
+    value: ""
+    required: false
+    from_file: true
+    help: |
+      堡垒机 SSH 公钥：可以填公钥文件路径（相对仓库根目录，preflight 内联内容），
+      留空则由 Terraform 自己生成 ED25519 密钥对，私钥通过
+      `./scripts/deploy.sh bastion-key` 落到 .local/bastion_key（0600，已 gitignore）。
+      注意：这批公共镜像拒绝 root 密码登录；keypair 只在实例首次创建时生效，
+      给已存在的实例挂密钥 API 会返回成功但系统里没有，需要重建实例。
+    map_to: terraform.bastion_public_key
+
   - key: bastion_ssh_cidrs
-    value: ["203.0.113.10/32"]
+    value: ["203.0.113.10/32", "203.0.113.11/32", "198.51.100.0/24"]
     required_if: bastion_enabled=true
     validate: cidr_public_or_private_list
     help: |
       允许 SSH 到堡垒机的源地址，即运维 PC 的公网出口。
       这是整套方案里唯一接受公网地址的地方：堡垒机是唯一公网入口。
+      注意：同一个运维 PC 到不同目的地的出口 IP 可能不止一个（运营商/企业
+      NAT 池），只填一个时会出现「连接超时」而不是「拒绝」。把查询到的
+      所有出口 IP 都列上，或填办公网段。
       按需加/32，不要放成 /8。
     map_to: terraform.bastion_ssh_cidrs
 
@@ -543,14 +558,16 @@ sizing:
     map_to: terraform.cce_cluster_version
 
   - key: node_flavor
-    value: x1.8u16g
+    value: x1.8u.16g
     required: true
     help: |
       CCE 工作节点规格，每 AZ 一个节点池。
       关键看「可分配 CPU」而不是总核数：系统组件约占 3.25 核，
       1 副本/AZ 是硬约束，4C 机型只剩 670m 装不下 1 核 Pod。
-      8C16G（x1.8u16g / ac8.2xlarge.2）已验证可跑；规格编码随区域变化，
-      下单前用 IMS/ECS 规格查询确认该区域有货。
+      8C16G 已验证可跑：x1 家族写 x1.8u.16g（注意点号），c7 家族写 c7.2xlarge.2。
+      规格名必须逐字匹配该区域 ECS 的 flavor 列表，多一个点都会被
+      CCE 拒成 "GetFlavorExtraSpecs failed: flavor not found"；
+      preflight 会按区域实测校验并给出正确的写法。
     map_to: terraform.cce_node_flavor
 
   - key: cce_cluster_flavor

@@ -264,6 +264,98 @@ redeploy, or raise the RDS parameter group's `max_connections` and restart the
 instance. Prefer lowering the pool: the gateway does not need a large pool
 because requests are long and few, not short and many.
 
+## Bastion access
+
+### `Permission denied (publickey)` although the key is registered
+
+`ssh(1)` reads `<key>.pub` next to the identity file to decide which key to
+offer. If that `.pub` is stale (the private key was regenerated, the `.pub`
+was not), ssh offers a key the server never received and every login fails
+while the private key itself is perfectly valid.
+
+```bash
+ssh-keygen -y -f .local/bastion_key > .local/bastion_key.pub   # rewrite the .pub
+ssh -vv -i .local/bastion_key root@<bastion> 2>&1 | grep Offering   # shows which key is offered
+```
+
+`./scripts/deploy.sh bastion-key` rewrites both halves for this reason.
+
+### Attaching a keypair to a running bastion does nothing
+
+The ECS keypair association call returns success, but the guest never picks the
+key up: keypairs are applied at first boot. After `bastion_public_key` changes,
+the instance must be replaced:
+
+```bash
+terraform -chdir=terraform/examples/cce-ha apply \
+  -replace='module.bastion[0].huaweicloud_compute_instance.bastion'
+```
+
+The bootstrap template also writes the same key into
+`/root/.ssh/authorized_keys` and creates the `opt` account (passwordless sudo),
+so a fresh instance is reachable even if the platform keypair injection does
+not reach the guest.
+
+### `permission denied` for both root and the named account
+
+Check the source address before anything else: a laptop whose egress IP differs
+per destination (carrier or corporate NAT pools) will connect from an address
+that is not in `bastion_ssh_cidrs`, and the failure is a connect timeout, not a
+refusal.
+
+```bash
+curl -s https://ipinfo.io/ip; curl -s https://ifconfig.me/ip   # may differ
+```
+
+## Ingress and the CCE-created ELB
+
+### Ingress has no ADDRESS and events show `ELB.8904`
+
+```
+Create ELB(ingress: litellm) error: status_code: 404,
+resp_body: {"error_msg":"get network or subnet info by elb_virsubnet_ids failed","error_code":"ELB.8904"}
+```
+
+The two subnet fields in `kubernetes.io/elb.autocreate` take **different id
+types**, and mixing them up produces exactly this 404:
+
+| Field | Takes | Where it comes from |
+|---|---|---|
+| `vip_subnet_cidr_id` | Neutron **subnet** id | `module.network.access_subnet_neutron_id` (`ipv4_subnet_id`) |
+| `elb_virsubnet_ids` | VPC **network** id (list) | `module.network.access_subnet_id` (`huaweicloud_vpc_subnet.this.id`) |
+
+Verified against the ELB v3 API directly: `vip=<subnet id>` +
+`elb_virsubnet_ids=[<network id>]` creates an internal ELB; any other
+combination returns 404. Both fields belong to the **access** subnet — the VIP
+sits in the ingress subnet, in front of the app subnet.
+
+Also note `kubernetes.io/elb.autocreate` is **immutable**: change it and the
+Ingress must be deleted and recreated, otherwise helm's patch is rejected and
+the old ELB configuration silently stays.
+
+### VIP answers but every request times out
+
+1. Check the listener port matches the protocol. With `tls_mode = none` the
+   listener must be HTTP:80; an HTTP listener on 443 is unreachable from
+   anything probing 80 (including `scripts/smoke-test.sh`).
+2. Check the ELB pool has members. On an overlay (`overlay_l2`) cluster the
+   Service must be **NodePort** — CCE registers `node:nodePort` as pool
+   members. A ClusterIP Service leaves the pool empty and the VIP accepts the
+   connection then hangs up.
+
+```bash
+kubectl -n litellm get ingress litellm -o jsonpath='{.metadata.annotations}'
+kubectl -n litellm get svc litellm -o jsonpath='{.spec.type}'
+```
+
+### `deploy-app` keeps deploying the previous configuration
+
+The bastion bundle is a cache of rendered values. `scripts/remote-deploy.sh`
+re-renders and re-uploads it on every `deploy-app`/`verify` for exactly this
+reason: an "exists" check is not a freshness check, and a stale
+`values.yaml` silently deploys yesterday's annotations (this cost two
+debugging rounds on the ELB subnet id).
+
 ## Observability
 
 ### No logs in LTS

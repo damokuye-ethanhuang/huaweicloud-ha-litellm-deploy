@@ -378,6 +378,110 @@ def check_image_supply(flat: dict[str, Any], report: Report) -> None:
 
 # ---------------------------------------------------------------- rendering ---
 
+def _iam(ak: str, sk: str, region: str) -> tuple[str, str]:
+    """Return (token, project_id). Shared by the flavor check below."""
+    import urllib.request
+
+    body = json.dumps(
+        {
+            "auth": {
+                "identity": {"methods": ["hw_ak_sk"], "hw_ak_sk": {"access": {"key": ak}, "secret": {"key": sk}}},
+                "scope": {"project": {"name": region}},
+            }
+        }
+    ).encode()
+    req = urllib.request.Request(
+        "https://iam.myhuaweicloud.com/v3/auth/tokens", data=body, headers={"Content-Type": "application/json"}
+    )
+    token = urllib.request.urlopen(req, timeout=20).headers["X-Subject-Token"]
+    body = json.dumps(
+        {"auth": {"identity": {"methods": ["token"], "token": {"id": token}}, "scope": {"project": {"name": region}}}}
+    ).encode()
+    req = urllib.request.Request(
+        "https://iam.myhuaweicloud.com/v3/auth/tokens", data=body, headers={"Content-Type": "application/json"}
+    )
+    project = json.loads(urllib.request.urlopen(req, timeout=20).read())["token"]["project"]["id"]
+    return token, project
+
+
+def check_node_flavor(v: dict[str, Any], report: Report, skip_network: bool) -> None:
+    """A wrong flavor name only fails after ~10 minutes of cluster creation.
+
+    CCE resolves the node flavor through ECS ExtraSpecs, so the exact string
+    matters: `x1.8u16g` is rejected while `x1.8u.16g` is accepted. Verify the
+    name against every AZ in the plan before Terraform starts, and normalise
+    the common doc-style misspelling when the region confirms the fix.
+    """
+    import urllib.request
+
+    flavor = str(v.get("node_flavor") or "")
+    az_list = [str(az) for az in (v.get("az_list") or [])]
+    region = str(v.get("region") or "")
+    if not flavor or not az_list or not region:
+        return
+    if skip_network:
+        report.add("flavor:availability", WARN, "network checks skipped: flavor not verified against the region")
+        return
+
+    file_values = parse_env_file(CRED_FILE)
+    ak = os.environ.get("HW_ACCESS_KEY") or file_values.get("HW_ACCESS_KEY", "")
+    sk = os.environ.get("HW_SECRET_KEY") or file_values.get("HW_SECRET_KEY", "")
+    if not (ak and sk):
+        report.add("flavor:availability", WARN, "no AK/SK: flavor not verified (CCE will reject a bad name mid-apply)")
+        return
+
+    try:
+        token, project = _iam(ak, sk, region)
+    except Exception as exc:  # noqa: BLE001 - offline or bad credentials is a warning here
+        report.add("flavor:availability", WARN, f"could not query ECS flavors: {exc}")
+        return
+
+    cache: dict[str, set[str]] = {}
+
+    def flavors(az: str) -> set[str]:
+        if az not in cache:
+            url = f"https://ecs.{region}.myhuaweicloud.com/v1/{project}/cloudservers/flavors?availability_zone={az}"
+            req = urllib.request.Request(url, headers={"X-Auth-Token": token})
+            data = json.loads(urllib.request.urlopen(req, timeout=30).read())
+            cache[az] = {f["name"] for f in data.get("flavors", [])}
+        return cache[az]
+
+    try:
+        missing = [az for az in az_list if flavor not in flavors(az)]
+    except Exception as exc:  # noqa: BLE001
+        report.add("flavor:availability", WARN, f"could not query ECS flavors: {exc}")
+        return
+
+    if not missing:
+        report.add("flavor:availability", OK, f"{flavor} offered in {', '.join(az_list)}")
+        return
+
+    # Documented 8C16G spec is written x1.8u.16g; x1.8u16g (or x1.8u.16G) is a
+    # frequent paste error and the region list is the authority on the exact name.
+    m = re.match(r"^([a-z]+\d*)\.(\d+)u(\d+)g$", flavor, re.IGNORECASE)
+    alt = f"{m.group(1)}.{m.group(2)}u.{m.group(3)}g" if m else ""
+    if alt and alt != flavor:
+        try:
+            if all(alt in flavors(az) for az in az_list):
+                v["node_flavor"] = alt
+                report.add(
+                    "flavor:availability",
+                    WARN,
+                    f"{flavor} is not a real flavor; rendering {alt} instead "
+                    f"(set node_flavor: {alt} in deploy-inputs.yaml to silence this)",
+                )
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
+    report.add(
+        "flavor:availability",
+        FAIL,
+        f"{flavor} not offered in {', '.join(missing)}; CCE fails node creation with "
+        "'GetFlavorExtraSpecs failed: flavor not found'",
+    )
+
+
 def hcl(v: Any) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -393,6 +497,18 @@ def hcl(v: Any) -> str:
 def merged(flat: dict[str, Any]) -> dict[str, Any]:
     """Effective values with derived switches resolved."""
     v = {k: item.get("value") for k, item in flat.items()}
+    # Inputs marked `from_file: true` hold a path; inline the file contents so
+    # key material never has to sit in deploy-inputs.yaml or in a commit.
+    for key, item in flat.items():
+        if not item.get("from_file") or not isinstance(v.get(key), str) or not v[key]:
+            continue
+        path = Path(v[key])
+        if not path.is_absolute():
+            path = REPO / path
+        try:
+            v[key] = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            v[key] = ""
     tls = v.get("tls_mode")
     v["enable_https"] = tls in ("elb_cert", "internal_ca")
     mode = v.get("model_endpoint_mode")
@@ -444,6 +560,7 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "bastion_enabled": v.get("bastion_enabled", True),
         "bastion_ssh_cidrs": v.get("bastion_ssh_cidrs") or [],
         "bastion_flavor": v.get("bastion_flavor") or "c7.large.2",
+        "bastion_public_key": v.get("bastion_public_key") or "",
         "vpn_enabled": v.get("vpn_enabled"),
         "customer_gateway_ip": v.get("customer_gateway_ip") or "0.0.0.0",
         "model_endpoint_mode": v.get("model_endpoint_mode"),
@@ -733,6 +850,7 @@ def main() -> int:
     check_container_cidr(flat, report)
     check_admin_reach(flat, report)
     check_image_supply(flat, report)
+    check_node_flavor(v, report, args.skip_network)
     if not v.get("cce_cluster_version"):
         report.add("cce_cluster_version", WARN, "empty: resolved at deploy time via huaweicloudsdkcce (scripts/resolve-cce-version.py)")
     check_version(str(v.get("litellm_version", "")), report, bool(os.environ.get("ACK_UPGRADE")))

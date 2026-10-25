@@ -104,6 +104,13 @@ resource "huaweicloud_cce_node" "workers" {
 
   tags = merge(local.tags, { az = var.availability_zones[count.index % length(var.availability_zones)] })
 
+  lifecycle {
+    # CCE writes its own system tags back onto the node (e.g. _sys_type_hcss_x)
+    # and they are not removable through the node API. Without this, every plan
+    # shows a phantom in-place update for all workers.
+    ignore_changes = [tags["_sys_type_hcss_x"]]
+  }
+
   timeouts {
     create = "60m"
     delete = "30m"

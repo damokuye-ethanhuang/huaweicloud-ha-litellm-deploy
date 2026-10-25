@@ -13,6 +13,7 @@ locals {
   user_data = var.install_tools ? templatefile("${path.module}/templates/bootstrap.sh.tpl", {
     kubectl_version = var.kubectl_version
     helm_version    = var.helm_version
+    ssh_public_key  = var.ssh_public_key
   }) : null
 }
 

@@ -228,13 +228,25 @@ module "cce" {
   tags                  = local.common_tags
 }
 
+resource "tls_private_key" "bastion" {
+  # Generated only when the operator brings no key. The public half goes to the
+  # keypair below; the private half is exposed as a sensitive output and written
+  # to .local/bastion_key by `./scripts/deploy.sh bastion-key`.
+  #
+  # RSA, not ED25519: the platform's keypair injection is documented for RSA and
+  # an Ed25519 key registered fine through the API but never reached the guest.
+  count     = var.bastion_enabled && var.bastion_public_key == "" ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
 resource "huaweicloud_compute_keypair" "bastion" {
-  # Created only when the operator brings their own public key. Key auth is the
-  # recommended path: the image here refuses root password login, and a password
-  # can only be changed by rebooting (which some shops forbid).
-  count      = var.bastion_enabled && var.bastion_public_key != "" ? 1 : 0
+  # Key auth is mandatory here: this image refuses root password login, and the
+  # keypair only takes effect on a newly created instance - attaching a key to a
+  # running one is accepted by the API and silently ignored by the guest.
+  count      = var.bastion_enabled ? 1 : 0
   name       = "${local.names["bastion"]}-key"
-  public_key = var.bastion_public_key
+  public_key = var.bastion_public_key != "" ? var.bastion_public_key : tls_private_key.bastion[0].public_key_openssh
 }
 
 module "bastion" {
@@ -249,6 +261,7 @@ module "bastion" {
   flavor_id             = var.bastion_flavor
   admin_password        = random_password.bastion[0].result
   key_pair              = one(huaweicloud_compute_keypair.bastion[*].name) != null ? one(huaweicloud_compute_keypair.bastion[*].name) : ""
+  ssh_public_key        = var.bastion_public_key != "" ? var.bastion_public_key : tls_private_key.bastion[0].public_key_openssh
   eip_bandwidth_size    = var.bastion_eip_bandwidth_size
   eip_charge_mode       = var.bastion_eip_charge_mode
   enterprise_project_id = local.eps_id

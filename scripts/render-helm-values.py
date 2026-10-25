@@ -38,31 +38,36 @@ def ingress_annotations(cert_id: str, spec: dict) -> dict:
         # Dedicated ELB requires both flavors; "" means "no L4 listener".
         "l4_flavor_name": "",
     }
+    # The listener port has to match the protocol: a cert means HTTPS on 443,
+    # no cert means plain HTTP on 80. Publishing HTTP on 443 makes the VIP
+    # unreachable from anything that probes 80 (including our own smoke test).
+    port = "443" if cert_id else "80"
     annotations = {
         "kubernetes.io/elb.class": spec.get("class", "performance"),
-        "kubernetes.io/elb.port": "443",
+        "kubernetes.io/elb.port": port,
         "kubernetes.io/elb.autocreate": json.dumps(autocreate, separators=(",", ":")),
     }
     if cert_id:
-        annotations["kubernetes.io/elb.protocol-port"] = "https:443"
+        annotations["kubernetes.io/elb.protocol-port"] = f"https:{port}"
         annotations["kubernetes.io/elb.cert-id"] = cert_id
     else:
-        annotations["kubernetes.io/elb.protocol-port"] = "http:443"
+        annotations["kubernetes.io/elb.protocol-port"] = f"http:{port}"
     return annotations
 
 
 def service_annotations(cert_id: str, elb_id: str) -> dict:
     """Annotations for the Terraform-owned ELB (standalone mode)."""
+    port = "443" if cert_id else "80"
     annotations = {
         "kubernetes.io/elb.id": elb_id,
         "kubernetes.io/elb.class": "performance",
-        "kubernetes.io/elb.port": "443",
+        "kubernetes.io/elb.port": port,
     }
     if cert_id:
-        annotations["kubernetes.io/elb.protocol-port"] = "https:443"
+        annotations["kubernetes.io/elb.protocol-port"] = f"https:{port}"
         annotations["kubernetes.io/elb.cert-id"] = cert_id
     else:
-        annotations["kubernetes.io/elb.protocol-port"] = "http:443"
+        annotations["kubernetes.io/elb.protocol-port"] = f"http:{port}"
     return annotations
 
 
@@ -75,7 +80,10 @@ def render(src: str, image: str, mode: str, elb_id: str, cert_id: str, ingress_s
         if not ingress_spec:
             sys.exit("elb_mode = ingress but the terraform output ingress_elb is empty")
         values["service"] = dict(values.get("service") or {})
-        values["service"].update({"type": "ClusterIP", "port": 4000, "annotations": {}})
+        # NodePort, not ClusterIP: on an overlay cluster the ELB has no pod-IP
+        # pass-through, so CCE registers node:nodePort as pool members. With
+        # ClusterIP the pool stays empty and the VIP accepts then hangs up.
+        values["service"].update({"type": "NodePort", "port": 4000, "annotations": {}})
         values["ingress"] = {
             "enabled": True,
             "className": ingress_spec.get("className", "cce"),

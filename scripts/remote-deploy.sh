@@ -81,7 +81,9 @@ cmd_bundle() {
   elb="$(terraform_output "$TF_DIR" loadbalancer_id)"
   cert="$(terraform_output "$TF_DIR" certificate_id)"
   image="$(terraform_output "$TF_DIR" litellm_image)"
-  gateway="$(terraform_output "$TF_DIR" gateway_private_ip)"
+  # Null in ingress mode (the Ingress controller allocates the VIP after apply),
+  # and terraform errors on a null output rather than printing nothing.
+  gateway="$(terraform_output "$TF_DIR" gateway_private_ip 2>/dev/null || true)"
   if [ "$mode" = "standalone" ] && [ -z "$elb" ]; then
     die "loadbalancer_id is empty; did apply-infra finish?"
   fi
@@ -250,6 +252,21 @@ bundle_gateway() {
   printf '%s' "$gateway"
 }
 
+
+ensure_remote_bundle() {
+  # `deploy-app` on its own used to jump straight to helm and fail with
+  # "install.sh: No such file or directory" when nothing had been uploaded yet.
+  # Produce and upload the bundle on demand instead.
+  # Always re-render: values are derived from terraform outputs and the render
+  # script, so a cached bundle silently deploys yesterday's configuration.
+  cmd_bundle
+  # Always upload: a bundle that merely exists can still be stale, and a stale
+  # values.yaml silently deploys the previous configuration (this cost us a
+  # debugging round on an ELB annotation that kept its old subnet id).
+  log "uploading bundle to ${REMOTE_HOST}"
+  cmd_push
+}
+
 cmd_exec() {
   [ "$#" -gt 0 ] || die "usage: remote-deploy.sh exec <command...>"
   setup_ssh
@@ -272,7 +289,11 @@ cmd_put() {
 case "${1:-all}" in
   bundle) cmd_bundle ;;
   push) cmd_push ;;
-  deploy-app | verify) cmd_run "$1" ;;
+  deploy-app | verify)
+    setup_ssh
+    ensure_remote_bundle
+    cmd_run "$1"
+    ;;
   exec)
     shift
     cmd_exec "$@"

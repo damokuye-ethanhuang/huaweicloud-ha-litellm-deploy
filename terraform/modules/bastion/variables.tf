@@ -143,3 +143,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "ssh_public_key" {
+  description = "Public key written into /root/.ssh/authorized_keys at first boot. The image's own keypair injection does not reach the guest, so this is the primary path."
+  type        = string
+  default     = ""
+}
