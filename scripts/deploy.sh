@@ -7,6 +7,8 @@
 #   ./scripts/deploy.sh apply-infra
 #   ./scripts/deploy.sh deploy-app
 #   ./scripts/deploy.sh verify
+#   ./scripts/deploy.sh ingress         # converge the CCE ELB Ingress (immutable annotations)
+#   ./scripts/deploy.sh verify-ui       # HTML + screenshot proof through the bastion
 #   ./scripts/deploy.sh all             # everything, apply included
 #
 # Remote execution (laptop outside the VPC: the cluster API and the ELB VIP are
@@ -216,6 +218,18 @@ run_verify() {
   ok "verification passed"
 }
 
+run_ingress() {
+  # One-shot convergence: delete-and-recreate when the immutable autocreate
+  # annotation changed, then prove the VIP actually serves.
+  "$REPO/scripts/ingress-apply.sh"
+}
+
+run_verify_ui() {
+  # Operator-eye verification: the HTML and a rendered screenshot, fetched
+  # through the bastion because nothing in this stack has a public endpoint.
+  "$REPO/scripts/verify-ui.sh"
+}
+
 run_bastion_key() {
   # Terraform owns the keypair. Write the private half somewhere the SSH/rsync
   # paths can use, 0600, inside .local (gitignored).
@@ -256,6 +270,8 @@ case "$STAGE" in
   deploy-app) run_app ;;
   verify) run_verify ;;
   bastion-key) run_bastion_key ;;
+  ingress) run_ingress ;;
+  verify-ui) run_verify_ui ;;
   all)
     run_plan
     run_apply
@@ -263,6 +279,6 @@ case "$STAGE" in
     run_verify
     ;;
   *)
-    die "unknown stage '$STAGE' (preflight|plan|apply-infra|deploy-app|verify|bastion-key|all)"
+    die "unknown stage '$STAGE' (preflight|plan|apply-infra|deploy-app|verify|ingress|verify-ui|bastion-key|all)"
     ;;
 esac

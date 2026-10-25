@@ -40,6 +40,8 @@ gateway** — the CCE API has no public endpoint and the ELB is internal.
 | `apply-infra` | your machine | cloud API only; 20–40 min |
 | `deploy-app` | **bastion** | needs cluster API + helm |
 | `verify` | **bastion** | the ELB VIP is routable from inside the VPC only, and it only exists after the Ingress reconciles |
+| `ingress` | your machine (drives the bastion) | converges the immutable `elb.autocreate` annotation, then proves the VIP serves |
+| `verify-ui` | your machine (drives the bastion) | `/ui/` HTML + headless-Chrome screenshot as evidence |
 | day-2 kubectl | **bastion** | same reason |
 
 ### Two facts that decide most of the design
@@ -135,12 +137,42 @@ Column order: `name | api_base | api_key | model`. Rules:
 ./scripts/deploy.sh apply-infra    # 20–40 min
 ./scripts/deploy.sh --remote deploy-app   # helm on the bastion
 ./scripts/deploy.sh --remote verify       # smoke on the bastion
+./scripts/deploy.sh ingress              # converge Ingress (idempotent), prove VIP
+./scripts/deploy.sh verify-ui            # /ui/ HTML + screenshot through the bastion
 ```
 
 `--remote all` does bundle + upload + deploy-app + verify in one go.
 
 Every stage is idempotent. `all` without `--remote` includes apply and must
 never run unattended.
+
+### Ingress: the three settings that decide whether it works
+
+`kubernetes.io/elb.autocreate` is immutable and its two subnet fields take
+different id types. Getting either wrong looks identical from the outside: the
+Ingress has no `ADDRESS` and events show `ELB.8904 get network or subnet info by
+elb_virsubnet_ids failed`.
+
+| Setting | Correct value | Wrong value looks like |
+|---|---|---|
+| `vip_subnet_cidr_id` | Neutron subnet id of the **access** subnet | 404 `subnet ... could not be found` |
+| `elb_virsubnet_ids` | VPC **network** id of the access subnet | `ELB.8904` |
+| listener port | 80 without a certificate, 443 with one | VIP accepts nothing on the port you probe |
+| Service type | **NodePort** (overlay cluster) | pool has zero members, VIP hangs up |
+
+`./scripts/deploy.sh ingress` encodes all four: it compares the live Ingress with
+the rendered bundle, deletes and recreates when the immutable annotation drifted,
+waits for the VIP, and fails if `/health/readiness` does not answer through it.
+`scripts/ingress-apply.sh --check` reports drift and exits 2 without changing
+anything — use it before blaming the app.
+
+### Verifying what the operator will see
+
+Pod counts are not evidence that the gateway works: the UI is a Next.js SPA, so
+an HTML fetch alone proves nothing either. `./scripts/deploy.sh verify-ui`
+fetches `/ui/` through the bastion, opens an ssh tunnel, renders the page with
+headless Chrome, and calls readiness plus `/v1/models` with the master key. It
+writes `out/verification/litellm-ui.{html,png}` (gitignored).
 
 ### What `deploy-app` does
 

@@ -36,6 +36,12 @@ NAMESPACE="${NAMESPACE:-litellm}"
 RELEASE="${RELEASE:-litellm}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-25m}"
 BASTION_USER="${BASTION_USER:-root}"
+# Terraform generates the keypair and `deploy.sh bastion-key` writes it here, so
+# default to it: requiring an export on every call is how the operator ends up
+# with a half-configured shell and a stage that "cannot find the bastion".
+if [ -z "${BASTION_KEY:-}" ] && [ -z "${BASTION_PASSWORD:-}" ] && [ -f "$(repo_root)/.local/bastion_key" ]; then
+  BASTION_KEY="$(repo_root)/.local/bastion_key"
+fi
 REMOTE_DIR="${REMOTE_DIR:-/root/litellm-bundle}"
 PROVIDER_ENV_FILE="${PROVIDER_ENV_FILE:-$REPO/secrets/app.env}"
 

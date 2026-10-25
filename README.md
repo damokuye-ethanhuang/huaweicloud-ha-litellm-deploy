@@ -85,6 +85,8 @@ $EDITOR deploy-inputs.yaml      # the only other file you edit
 ./scripts/deploy.sh apply-infra # 20–40 min, mostly CCE
 ./scripts/deploy.sh --remote deploy-app   # helm, executed on the bastion
 ./scripts/deploy.sh --remote verify       # smoke test, executed on the bastion
+./scripts/deploy.sh ingress              # converge the CCE ELB Ingress (idempotent)
+./scripts/deploy.sh verify-ui            # HTML + screenshot proof through the bastion
 
 ./scripts/handoff.py scrub && ./scripts/handoff.py check   # after the test: no customer data left
 ```
@@ -98,6 +100,15 @@ without asking for a secret in a chat.
 the gateway: the CCE API has no public endpoint and the ELB is private. The
 bastion is the only host with a public IP, so in-cluster stages run there. It
 needs only `kubectl` and `helm` — no Terraform, no AK/SK.
+
+`ingress` is its own stage because the CCE ELB Ingress annotation
+(`kubernetes.io/elb.autocreate`) is **immutable**: changing the subnet, zones,
+port or flavor is rejected and the old ELB keeps serving. The stage compares the
+cluster against the rendered bundle, deletes and recreates the Ingress when they
+differ, then proves the VIP answers `/health/readiness`. `--check` reports the
+drift without touching anything. `verify-ui` fetches `/ui/` through the bastion
+and screenshots it with headless Chrome, so "it is deployed" is backed by an
+artifact rather than a pod count.
 
 Model endpoints and their keys are declared in `deploy-inputs.yaml`
 (`models[]`); the keys themselves live in `secrets/app.env` (gitignored) and are

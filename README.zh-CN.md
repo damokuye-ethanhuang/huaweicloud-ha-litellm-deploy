@@ -69,6 +69,8 @@ $EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 ./scripts/deploy.sh apply-infra # 20–40 分钟，主要是 CCE
 ./scripts/deploy.sh --remote deploy-app   # 在堡垒机上跑 helm
 ./scripts/deploy.sh --remote verify       # 在堡垒机上做 smoke
+./scripts/deploy.sh ingress              # 一次性收敛 CCE ELB Ingress（幂等）
+./scripts/deploy.sh verify-ui            # 通过堡垒机取 HTML + 截图取证
 
 ./scripts/handoff.py scrub && ./scripts/handoff.py check   # 测完清场，必须输出 clean
 ```
@@ -80,6 +82,12 @@ $EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 `--remote` 的原因：VPC 外的机器既连不上集群（CCE 无公网端点），也访问不到
 网关（ELB 是私网）。堡垒机是唯一有公网 IP 的主机，所以集群内动作都在那里执行，
 它只需要 `kubectl` 和 `helm`，不需要 Terraform 和 AK/SK。
+
+`ingress` 单独成一个阶段，是因为 `kubernetes.io/elb.autocreate` **不可修改**：
+改子网、可用区、端口或规格都会被 API 拒绝，旧的 ELB 继续服务。该阶段把集群现状
+和渲染出的 bundle 对比，不一致就删除重建，再通过 VIP 访问 `/health/readiness`
+证明真的通了；加 `--check` 只报告漂移、不做变更。`verify-ui` 则通过堡垒机抓
+`/ui/` 并用无头 Chrome 截图，让「已部署」有产物可查，而不是只看 Pod 数量。
 
 模型端点和 KEY 分开管理：端点写在 `deploy-inputs.yaml` 的 `models[]`，KEY 写在
 `secrets/app.env`（已 gitignore），YAML 里只用 `api_key_env` 引用变量名：

@@ -54,6 +54,12 @@ remote-deploy: ## Bundle, upload and deploy via the bastion (no cluster access n
 verify: ## Readiness, model list and fallback check
 	./scripts/deploy.sh --remote verify
 
+ingress: ## Converge the CCE ELB Ingress and prove the VIP serves
+	./scripts/deploy.sh ingress
+
+verify-ui: ## Fetch /ui/ HTML and a screenshot through the bastion
+	./scripts/deploy.sh verify-ui
+
 smoke: ## Probe liveness, readiness and /v1/models against the gateway
 	./scripts/smoke-test.sh
 

@@ -552,6 +552,34 @@ three different `topology.kubernetes.io/zone` values. The chart's zone spread is
 `DoNotSchedule` on purpose - with `ScheduleAnyway` the scheduler packs all
 replicas into one AZ and a single-zone failure takes the gateway down.
 
+## 8b. Converging the Ingress, and proving the UI renders
+
+`deploy-app` creates the Ingress once; afterwards the annotation
+`kubernetes.io/elb.autocreate` cannot be edited (the API rejects it and the old
+ELB keeps serving). When a subnet, zone list, port or flavor has to change:
+
+```bash
+./scripts/ingress-apply.sh --check    # report drift, change nothing (exit 2 = drift)
+./scripts/deploy.sh ingress           # delete + recreate, then prove readiness
+```
+
+The stage refuses to guess: it reads the desired annotations from the rendered
+bundle (the same file helm consumes), so "what Terraform says" and "what is in
+the cluster" cannot diverge silently. It then prints the resolved zone list and
+subnet ids before touching anything, because a wrong id type is the failure that
+only shows up as `ELB.8904` in `kubectl describe ingress`.
+
+For visual evidence, run from a machine outside the VPC:
+
+```bash
+./scripts/deploy.sh verify-ui         # writes out/verification/litellm-ui.{html,png}
+```
+
+It fetches `/ui/` through the bastion, opens an ssh tunnel to the private VIP,
+renders the page with headless Chrome, then calls readiness and `/v1/models`.
+Artifacts are gitignored; attach them to a change request instead of describing
+the deployment.
+
 ## 9. Teardown
 
 ```bash
