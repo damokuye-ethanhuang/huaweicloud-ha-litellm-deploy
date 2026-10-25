@@ -29,11 +29,13 @@ fill deploy-inputs.yaml
         ▼
 [2] apply-infra ─► VPC, subnets, SG, CCE, RDS, DCS, ELB, LTS/AOM, bastion
         │           20–40 min, dominated by CCE
+        │           RDS is created EMPTY: databases exist, tables do not
         ▼
-[3] deploy-app ──► kubeconfig, Secret, migration Job, helm upgrade --install
+[3] deploy-app ──► kubeconfig, Secret, SQL schema migration, helm upgrade
+        │           migration Job runs FIRST, then pods start
         │           run from the bastion: CCE has no public endpoint
         ▼
-[4] verify ──────► readiness, /v1/models, one real completion
+[4] verify ──────► readiness, /v1/models, one real completion, tables present
         │
         ▼
    hand out a tenant key (never the master key)
@@ -48,17 +50,18 @@ Single entry point:
 
 ### Where each stage runs
 
-A machine outside the VPC can create infrastructure — cloud APIs are public —
-but it **cannot reach the cluster or the gateway**: the CCE API has no public
-endpoint and the ELB is internal.
+A machine outside the VPC can create infrastructure — cloud APIs are public — but
+it **cannot reach the cluster or the gateway**: the CCE API has no public
+endpoint and the ELB is internal. Only the in-VPC bastion is called a bastion;
+your own machine is just a PC.
 
 | Stage | Host | Why |
 |---|---|---|
-| preflight | local | renders artifacts, no cloud calls |
-| plan, apply-infra | local | cloud API only |
+| preflight | operator PC | renders artifacts, no cloud calls |
+| plan, apply-infra | operator PC | cloud API only |
 | deploy-app | **bastion** | needs the cluster API and helm |
 | verify | **bastion** | the ELB VIP is routable only inside the VPC |
-| day-2 kubectl / helm | **bastion** | same reason |
+| day-2 kubectl / helm / psql | **bastion** | same reason, plus the ops subnet may reach the data layer |
 
 `--remote` automates the handoff: it bundles rendered values, the chart, the
 Secret contents and the kubeconfig, uploads them to `/root/litellm-bundle`, and
@@ -86,12 +89,18 @@ unattended — it includes `apply`.
 ### Credentials
 
 Create a **dedicated IAM user**; do not reuse a production account's AK/SK.
-Export them in your own shell — they are never written to any file in this repo:
+They live in one file, `secrets/hw.env`, which is gitignored:
 
 ```bash
-export HW_ACCESS_KEY=...
-export HW_SECRET_KEY=...
+./scripts/creds.sh set        # prompts, hides input, chmod 600
+./scripts/creds.sh status     # masked view of what preflight will use
+./scripts/creds.sh clear      # back to empty, run this after testing
 ```
+
+When a customer supplies the credentials, send them `./scripts/handoff.py form`
+instead: it states where each value goes without ever asking for a secret in a
+chat window. `HW_ACCESS_KEY` / `HW_SECRET_KEY` exported in the shell still win
+over the file, so CI needs no file on disk.
 
 The HuaweiCloud Terraform provider and the Python SDK both follow the same
 credential chain, so `~/.huaweicloud/credentials` works too. No signing code
@@ -115,7 +124,13 @@ official SDK.
 python3 -m venv .venv-sdk
 .venv-sdk/bin/pip install huaweicloudsdkcce
 .venv-sdk/bin/python scripts/resolve-cce-version.py --dry-run   # show, do not write
+./scripts/check-cce-versions.py                                 # API + preset drift
 ```
+
+`check-cce-versions.py` compares the live list (SDK) and any vendor doc page you
+add to `version-presets.yaml:cce.doc_sources` against the preset, and with
+`--write` bumps `max_minor`. The procedure for a real upgrade is in
+`docs/upgrade-procedure.md`.
 
 If you must pin a version, put it in `deploy-inputs.yaml` and note why.
 
@@ -248,10 +263,9 @@ What it does, in order:
    outputs, merged with any provider keys in `secrets/app.env` (gitignored);
 3. renders the values file with ELB annotations (id, class, protocol-port,
    certificate);
-4. runs `helm upgrade --install --wait`; the migration Job runs as a
-   `pre-install` / `pre-upgrade` hook **before** the Deployment rolls out, and
-   the pods run with `DISABLE_SCHEMA_UPDATE=true` so only one process ever
-   migrates;
+4. runs `helm upgrade --install --wait`. Helm executes the **SQL migration Job**
+   first (`pre-install` / `pre-upgrade` hook, weight -5), waits for it, and only
+   then replaces the Deployment — see [5.1](#51-tables-come-from-litellms-own-migrations-not-from-sql-in-this-repo);
 5. runs the smoke test.
 
 If the migration fails, the release stops and the previous pods keep serving.
@@ -261,6 +275,55 @@ Provider keys: put them in `secrets/app.env` (never in `deploy-inputs.yaml`,
 never on a command line). A model whose `api_key_env` is missing from that file
 simply has no key — that is valid for endpoints that do not authenticate.
 
+### 5.1 Tables come from LiteLLM's own migrations, not from SQL in this repo
+
+There is no `CREATE TABLE` step and no schema file in this repository — by
+design. The schema is LiteLLM's, so it is applied by LiteLLM's bundled Prisma
+migrations, which ship inside the image and run automatically:
+
+| Moment | Who creates what |
+|---|---|
+| `apply-infra` | RDS PostgreSQL 16 primary/standby, and the **empty logical database** with its role and password. No tables, no DDL. |
+| `deploy-app` → `helm upgrade` | Helm runs the migration Job first (`pre-install`/`pre-upgrade`, weight `-5`) and waits for it. That Job is `litellm --skip_server_startup` with `DISABLE_SCHEMA_UPDATE=false`, so `prisma migrate deploy` creates every table, index and enum LiteLLM needs. |
+| `deploy-app` → pods | Start **only after** the Job succeeded, with `DISABLE_SCHEMA_UPDATE=true`, so no pod ever migrates and two pods never race. |
+
+Re-running `deploy-app` is safe and idempotent: Prisma applies only migrations
+that have not been applied yet, so a second run is a no-op.
+
+The Job definition is `charts/litellm/templates/migration-job.yaml` and is
+deleted on success (`hook-succeeded`).
+
+**Do not hand-write SQL or import a dump into this database.** LiteLLM checks
+the migration state on startup; a schema created from a third-party dump will
+either be rejected or silently diverge, and the next real upgrade will fail. If
+you need seed data, use the Admin UI or the API, not `psql INSERT`.
+
+Verify from the bastion:
+
+```bash
+# did the migration run and succeed?
+kubectl -n litellm get jobs -l app.kubernetes.io/component=migration
+kubectl -n litellm logs job/$(kubectl -n litellm get jobs \
+  -l app.kubernetes.io/component=migration -o jsonpath='{.items[0].metadata.name}') --tail=40
+
+# do the tables exist? (read-only check from the ops subnet)
+psql "$LITELLM_DATABASE_URL" -c '\dt'
+# LiteLLM_ProxyModelTable, LiteLLM_VerificationToken, LiteLLM_TeamTable,
+# LiteLLM_SpendLogs, LiteLLM_UserTable, ... plus the _prisma_migrations table
+```
+
+`_prisma_migrations` is the authoritative record: one row per applied migration.
+If it is empty while the gateway serves traffic, something bypassed the Job.
+
+Break-glass when a release failed after the Job was already garbage-collected:
+
+```bash
+./scripts/migrate.sh     # re-applies the chart's migration Job and waits for it
+```
+
+`LITELLM_SALT_KEY` is what makes stored provider credentials readable, so a
+database restored from backup must be paired with the salt from the same backup.
+
 ## 6. Stage: verify
 
 ```bash
@@ -268,7 +331,6 @@ simply has no key — that is valid for endpoints that do not authenticate.
 MODEL=glm-5.3 ./scripts/deploy.sh --remote verify   # also sends one real completion
 
 kubectl -n litellm get pods                # 3/3 Running, across AZs
-kubectl -n litellm logs job/litellm-migrate-1 --tail=50
 ```
 
 Manual checks, from inside the VPC:
@@ -276,8 +338,21 @@ Manual checks, from inside the VPC:
 ```bash
 curl -s http://<vip>/health/liveliness
 curl -s http://<vip>/health/readiness      # db: connected, redis: connected
-curl -s http://<vip>/v1/models -H "Authorization: Bearer $MASTER" | jq -r '.data[].id'
+curl -s http://<vip>/v1/models -H "Authorization: Bearer ***" | jq -r '.data[].id'
 ```
+
+Database check — the gateway can serve `/v1/models` from memory even if the
+schema is wrong, so confirm the tables directly:
+
+```bash
+# on the bastion
+kubectl -n litellm get jobs -l app.kubernetes.io/component=migration
+psql "$LITELLM_DATABASE_URL" -c "select count(*) from _prisma_migrations where finished_at is not null;"
+```
+
+A non-zero count with no `rolled_back_at` rows means the schema is in sync with
+the image. If the Job is already deleted (hook-succeeded) this is the only record
+left, which is why it is checked here rather than assumed.
 
 Then verify the thing smoke tests cannot: **make the primary model fail** and
 confirm the request succeeds on the fallback. That is the entire point of the
@@ -310,10 +385,17 @@ the username; the script handles it.
 
 ```bash
 CONFIRM=yes ./scripts/destroy.sh terraform/examples/cce-ha
+./scripts/handoff.py scrub     # back up, then clear AK/SK and customer values
+./scripts/handoff.py check     # must print "clean"
 ```
 
 Destroying the stack deletes the database. Take a manual backup first if the
 data matters.
+
+`scrub` copies `deploy-inputs.yaml` and anything under `secrets/` to
+`.local/handoff-<timestamp>/` (gitignored) before clearing: project name,
+customer CIDRs, model endpoints and both credential files. `check` is what you
+run before handing a laptop back or opening a PR.
 
 ## Stage-level checklist
 
@@ -326,7 +408,10 @@ Tick these as the stages complete, not at the end:
 - [ ] preflight: zero `FAIL`
 - [ ] plan: read by a human, every replacement explained
 - [ ] apply-infra: outputs captured somewhere durable
+- [ ] apply-infra: RDS is primary/standby and the logical database exists but is **empty** (no tables yet — that is correct)
 - [ ] deploy-app: migration Job succeeded before pods rolled
+- [ ] deploy-app: pods started with `DISABLE_SCHEMA_UPDATE=true` (no pod migrated)
+- [ ] verify: `_prisma_migrations` has rows and no rolled-back entries
 - [ ] verify: readiness green, `/v1/models` lists both models
 - [ ] verify: fallback proven by forcing the primary to fail
 - [ ] alert rules and dashboard imported

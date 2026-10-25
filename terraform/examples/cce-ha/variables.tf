@@ -34,9 +34,14 @@ variable "enterprise_project_id" {
 # --- Network -----------------------------------------------------------------
 
 variable "vpc_cidr" {
-  description = "VPC CIDR. Must hold the access/app/data /24s plus the reserved container /24."
+  description = "VPC CIDR. Must be a /21: the modules carve access/app/data/ops /24s and a /26 VPCE subnet from it in that order."
   type        = string
-  default     = "10.0.0.0/22"
+  default     = "10.0.0.0/21"
+
+  validation {
+    condition     = can(cidrhost(var.vpc_cidr, 0)) && tonumber(split("/", var.vpc_cidr)[1]) == 21
+    error_message = "vpc_cidr must be a /21, for example 10.0.0.0/21."
+  }
 }
 
 variable "az_list" {
@@ -46,7 +51,7 @@ variable "az_list" {
 }
 
 variable "access_subnet_cidr" {
-  description = "Ingress subnet: internal ELB VIP and the operator bastion."
+  description = "Ingress subnet: internal ELB VIP."
   type        = string
   default     = "10.0.0.0/24"
 }
@@ -63,12 +68,16 @@ variable "data_subnet_cidr" {
   default     = "10.0.2.0/24"
 }
 
-
+variable "ops_subnet_cidr" {
+  description = "Operations subnet: the in-VPC bastion and future jump hosts. Reaches every service in the VPC."
+  type        = string
+  default     = "10.0.3.0/24"
+}
 
 variable "vpce_subnet_cidr" {
   description = "Small dedicated subnet for ModelArts VPCEP endpoints."
   type        = string
-  default     = "10.0.3.0/27"
+  default     = "10.0.4.0/26"
 }
 
 variable "pod_cidr" {
@@ -78,7 +87,7 @@ variable "pod_cidr" {
 }
 
 variable "allowed_client_cidrs" {
-  description = "Private CIDRs allowed to call the gateway API on 443."
+  description = "VPC-internal CIDRs allowed to call the gateway API on 443 (business subnets, peered VPCs, VPN pools). Public ranges never work here: the ELB has no EIP."
   type        = list(string)
 
   validation {
@@ -88,23 +97,23 @@ variable "allowed_client_cidrs" {
 }
 
 variable "admin_access_cidrs" {
-  description = "Private CIDRs allowed to reach the Admin UI. Should be narrower than allowed_client_cidrs."
+  description = "VPC-internal CIDRs allowed to reach the Admin UI on 443. Narrower than allowed_client_cidrs; the ops subnet is the usual answer."
   type        = list(string)
 
   validation {
     condition     = length(var.admin_access_cidrs) > 0
-    error_message = "admin_access_cidrs must not be empty; use the bastion range."
+    error_message = "admin_access_cidrs must not be empty; use the ops subnet CIDR."
   }
 }
 
 variable "bastion_enabled" {
-  description = "Create the operator bastion with a pay-per-use EIP. CCE has no public endpoint in this design, so helm runs from here (or from a laptop tunnelled through it)."
+  description = "Create the in-VPC bastion with a pay-per-use EIP. CCE has no public endpoint in this design, so every kubectl/helm/smoke-test command runs from this machine."
   type        = bool
   default     = true
 }
 
 variable "bastion_ssh_cidrs" {
-  description = "Public CIDRs allowed to SSH into the bastion. Empty disables SSH ingress (console/VNC only)."
+  description = "Public CIDRs allowed to SSH into the bastion - the operator PCs' egress addresses. This is the only place a public range belongs. Empty disables SSH ingress (console/VNC only)."
   type        = list(string)
   default     = []
 }

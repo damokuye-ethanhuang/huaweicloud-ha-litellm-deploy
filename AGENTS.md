@@ -15,10 +15,13 @@ code is the authority on *how*.
 3. **Never skip the plan.** `apply-infra` refuses to run without a saved
    `tfplan`. It is legitimate to run `plan`; it is a policy violation to run
    `terraform apply -auto-approve` directly.
-4. **Secrets never enter arguments, files or logs.** AK/SK come from the
-   environment (`HW_ACCESS_KEY`/`HW_SECRET_KEY`). Generated passwords are the
-   job of Terraform. Provider API keys belong in `secrets/app.env` (gitignored).
-   When you display output from Terraform, redact values of type `sensitive`.
+4. **Secrets never enter arguments, files or logs.** AK/SK live in
+   `secrets/hw.env` (written by `creds.sh set`, gitignored) or in the
+   environment; never paste them into a chat, a commit or `deploy-inputs.yaml`.
+   Generated passwords are the job of Terraform. Provider API keys belong in
+   `secrets/app.env` (gitignored). When you display output from Terraform,
+   redact values of type `sensitive`. After a test, `handoff.py scrub` then
+   `handoff.py check` must pass.
 5. **Stop on failure.** Each stage either succeeds or stops. Do not "work
    around" a failed stage by deleting resources, editing state, or disabling a
    check. Report the failing stage and the exact error.

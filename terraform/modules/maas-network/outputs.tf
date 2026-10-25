@@ -9,13 +9,23 @@ output "vpc_cidr" {
 }
 
 output "subnet_ids" {
-  description = "Subnet IDs keyed access/app/data/container."
+  description = "Subnet IDs keyed access/app/data/ops."
   value       = { for k, s in huaweicloud_vpc_subnet.this : k => s.id }
 }
 
 output "access_subnet_id" {
-  description = "Ingress subnet: internal ELB VIP and bastion."
+  description = "Ingress subnet: internal ELB VIP."
   value       = huaweicloud_vpc_subnet.this["access"].id
+}
+
+output "ops_subnet_id" {
+  description = "Operations subnet: where the in-VPC bastion lives."
+  value       = huaweicloud_vpc_subnet.this["ops"].id
+}
+
+output "ops_subnet_cidr" {
+  description = "CIDR of the operations subnet."
+  value       = huaweicloud_vpc_subnet.this["ops"].cidr
 }
 
 output "app_subnet_id" {

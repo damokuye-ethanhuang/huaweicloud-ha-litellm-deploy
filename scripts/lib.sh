@@ -31,6 +31,21 @@ repo_root() {
   cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 }
 
+# Credentials live in exactly one place: secrets/hw.env, written by creds.sh.
+# Variables already in the environment win, so CI can inject them without a file.
+# Called explicitly (not at source time) so `creds.sh check` sees the raw state.
+load_credentials() {
+  local file key value
+  file="$(repo_root)/secrets/hw.env"
+  [ -f "$file" ] || return 0
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    case "$key" in '' | '#'*) continue ;; esac
+    value="${value%\"}"
+    value="${value#\"}"
+    [ -n "${!key:-}" ] || export "$key=$value"
+  done <"$file"
+}
+
 # terraform_output <dir> <name>
 terraform_output() {
   local dir="$1" name="$2"

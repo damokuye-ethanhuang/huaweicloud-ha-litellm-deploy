@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Operations subnet.** The VPC is now a fixed `/21` carved by `cidrsubnets`
+  into access/app/data/ops `/24`s plus a VPCE `/26`. The bastion moved out of
+  the access subnet into its own ops subnet, which may reach the ELB, PostgreSQL,
+  Redis and the CCE API; pods still cannot reach the data layer. A subnet whose
+  CIDR does not match the carved slot now fails at plan time instead of halfway
+  through an apply.
+- **Credentials have one home.** AK/SK live in `secrets/hw.env` (gitignored,
+  `chmod 600`) written by `scripts/creds.sh`; exported variables still win, so CI
+  needs no file. The docs no longer tell anyone to `export` secrets by hand.
+- **Model schema.** `provider` is gone (it never existed in code); `model`
+  accepts both `glm-5.3` and `openai/glm-5.3` without producing
+  `openai/openai/...`. `api_key_env` names are derived from the model name with
+  the version stripped (`deepseek-v4.1-flash` → `DEEPSEEK_API_KEY`).
+- `lint.sh` no longer discards `terraform init`/`validate` output: a syntax error
+  used to surface only as the word `FAILED`.
 - One deployment implementation: `deploy-app.sh` is a shim over
   `deploy.sh deploy-app`. The previous duplicate read a removed output and
   skipped the rendered model list, producing a gateway with no models.
@@ -20,6 +35,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `scripts/creds.sh`: the AK/SK lifecycle (`set`, `status`, `load`, `check`,
+  `clear`) against a single file.
+- `scripts/handoff.py`: `form` (what to send a customer and where each value
+  goes), `models` (apply `name | api_base | api_key | model` rows),
+  `status`, `check`, `scrub` (back up, then restore placeholders).
+- `scripts/check-cce-versions.py`: compares the live CCE version list (SDK) and
+  vendor doc pages against `version-presets.yaml:cce`.
+- `scripts/patch-archify-source.py`: keeps the interactive diagram source in step
+  with `deploy-inputs.yaml`.
 - `monitoring/`: AOM alert rules, Grafana dashboard, wiring guide.
 - `docs/sa-checklist.md`: solution-architect planning checklist.
 - `scripts/check-docs.py`: fails on removed concepts, broken links and README

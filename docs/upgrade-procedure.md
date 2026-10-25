@@ -113,3 +113,26 @@ helm -n litellm rollback litellm <上一个 revision>
 `preset` 代表“经过验证的基线”。确认目标版本在真实环境稳定运行一段时间（建议至少
 一个完整业务周期）后，才在 PR 中把 `preset` 提到该版本，并同步更新
 `README.md`、`CHANGELOG.md` 和 `max_compatible`。这是方案更新，不是日常升级。
+
+## CCE / Kubernetes 版本
+
+`cce_cluster_version` 留空时，`deploy.sh` 每次都用官方 SDK 查询本区域支持的版本，
+所以日常部署不需要关心它。需要人工判断的只有两件事：**这个区域还支持我们的下限吗**
+和**有没有新的 minor 可以升**。
+
+```bash
+./scripts/check-cce-versions.py              # SDK（有 AK/SK 时）+ 已配置的文档页
+./scripts/check-cce-versions.py --doc <URL>  # 临时抓一个官方版本说明页
+./scripts/check-cce-versions.py --write      # 有新 minor 时更新 max_minor
+```
+
+判断依据：
+
+1. 打开 https://support.huaweicloud.com/intl/zh-cn/index.html，搜
+   “Kubernetes版本发布记录”（CCE 用户指南 → 版本说明）。这是静态 HTML，表格可以
+   直接解析。
+2. 把该页 URL 写进 `version-presets.yaml` 的 `cce.doc_sources`，下次自动检查。
+3. 新 minor 出现时先跑 `--write` 更新 `max_minor`，再按下面顺序验证：
+   `chart 的 kubeVersion 是否覆盖` → `一次性在测试集群 apply` → `smoke test`。
+4. 只有当 CCE 停止支持 `compatibility.kubernetes_min` 时，才升级这个下限——那意味着
+   老集群已经开不出来了。

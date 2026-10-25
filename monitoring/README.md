@@ -51,7 +51,7 @@ podAnnotations:
 # 确认注解已生效
 kubectl get pods -n litellm -o jsonpath='{.items[0].metadata.annotations}'
 
-# 直连一个 Pod 看指标有没有出来（跳板机上执行）
+# 直连一个 Pod 看指标有没有出来（堡垒机上执行）
 kubectl -n litellm port-forward deploy/litellm 4000:4000 &
 curl -s localhost:4000/metrics | grep '^litellm_' | head -20
 ```

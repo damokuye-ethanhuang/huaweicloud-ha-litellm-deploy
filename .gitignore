@@ -59,6 +59,8 @@ build/
 tmp/
 .venv-sdk/
 out/
+# local backups written by scripts/handoff.py scrub
+.local/
 
 # Archify transient receipts
 docs/*.finalize*.json

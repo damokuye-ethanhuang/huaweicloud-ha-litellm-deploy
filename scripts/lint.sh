@@ -7,6 +7,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 fail=0
+TMP_LOG="$(mktemp)"
+trap 'rm -f "$TMP_LOG"' EXIT
 step() { printf '\n=== %s ===\n' "$*"; }
 
 step "terraform fmt"
@@ -16,12 +18,14 @@ step "terraform validate"
 for dir in terraform/modules/* terraform/examples/*; do
   [ -d "$dir" ] || continue
   printf '  %-40s' "$dir"
-  if terraform -chdir="$dir" init -backend=false -input=false -no-color >/dev/null 2>&1 &&
-    terraform -chdir="$dir" validate -no-color >/dev/null; then
+  # Keep the output: a swallowed init/validate error used to leave only
+  # "FAILED" behind, which is worse than useless when it is a syntax error.
+  if terraform -chdir="$dir" init -backend=false -input=false -no-color >"$TMP_LOG" 2>&1 &&
+    terraform -chdir="$dir" validate -no-color >"$TMP_LOG" 2>&1; then
     echo ok
   else
     echo FAILED
-    terraform -chdir="$dir" validate -no-color || true
+    grep -E '^(Error|│ *Error)|on .* line' "$TMP_LOG" | head -6 || sed -n '1,12p' "$TMP_LOG"
     fail=1
   fi
 done

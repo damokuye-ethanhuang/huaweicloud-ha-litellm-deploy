@@ -130,6 +130,14 @@ never run unattended.
 
 A failed migration stops the release; previous pods keep serving.
 
+**Tables are never created by hand.** `apply-infra` leaves an empty database;
+step 4's Job runs LiteLLM's bundled Prisma migrations (`litellm
+--skip_server_startup`, `DISABLE_SCHEMA_UPDATE=false`) and Helm waits for it
+before the Deployment rolls. Do not write SQL, do not import a dump — LiteLLM
+validates migration state on startup and will diverge or fail on the next
+upgrade. Re-running `deploy-app` is idempotent; `scripts/migrate.sh` exists only
+to re-run the Job when a release died after the hook was garbage-collected.
+
 ### What `verify` must prove
 
 - `/health/readiness` → `db: connected`, `redis: connected`
@@ -146,7 +154,7 @@ A failed migration stops the release; previous pods keep serving.
 | `certificate_id` format | operator pasted a name; need the SCM/ELB UUID |
 | `version > preset` | point to `docs/upgrade-procedure.md`; rerun with `ACK_UPGRADE=1` only after they confirm |
 | `version > max_compatible` | stop; `version-presets.yaml` needs updating with evidence |
-| credentials `FAIL` | ask the operator to export AK/SK in their own shell; never accept them in chat |
+| credentials `FAIL` | ask the operator to run `./scripts/creds.sh set` themselves; never accept AK/SK in chat |
 | `ssh` to bastion hangs | `bastion_ssh_cidrs` does not include their egress; fix input, re-apply |
 | helm cannot reach cluster | you are not on the bastion — use `--remote` |
 | `ImagePullBackOff` | image not mirrored to SWR, or pull secret wrong |

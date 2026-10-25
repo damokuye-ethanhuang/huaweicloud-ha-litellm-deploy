@@ -59,6 +59,12 @@ variable "period_unit" {
   default     = "month"
 }
 
+variable "ops_cidr" {
+  description = "Ops subnet CIDR allowed to reach the cluster API on 6443. Empty disables the rule."
+  type        = string
+  default     = ""
+}
+
 variable "container_network_cidr" {
   description = "Pod CIDR for overlay networking. Must not overlap the VPC CIDR."
   type        = string

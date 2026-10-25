@@ -7,15 +7,27 @@ locals {
     var.tags,
   )
 
-  # Three role-separated /24s plus a reserved container /24:
-  #   access     internal ELB VIP, bastion
+  # Four role-separated /24s plus a small VPCE /26, carved in a fixed order so
+  # that a mistyped CIDR fails the plan instead of silently overlapping:
+  #   access     internal ELB VIP
   #   app        CCE workers
   #   data       RDS, DCS (no other subnet may reach 5432/6379)
-  #   container  CCE Turbo pod addresses
+  #   ops        the in-VPC bastion; may reach every service in the VPC
+  #   vpce       ModelArts private endpoints (optional, /26)
+  subnet_slots = cidrsubnets(
+    var.vpc_cidr,
+    3, 3, 3, 3, 5
+  )
+
+  # Rendered in the precondition message below; kept as a local because HCL
+  # cannot nest a quoted join(", ", ...) inside a format() call.
+  expected_subnets = join(", ", slice(local.subnet_slots, 0, 4))
+
   subnets = {
     access = { cidr = var.access_subnet_cidr, name = var.names["subnet_access"] }
     app    = { cidr = var.app_subnet_cidr, name = var.names["subnet_app"] }
     data   = { cidr = var.data_subnet_cidr, name = var.names["subnet_data"] }
+    ops    = { cidr = var.ops_subnet_cidr, name = var.names["subnet_ops"] }
   }
 
   sg_rules = merge(
@@ -40,6 +52,20 @@ locals {
         to        = 443
         cidr      = cidr
         note      = "Admin UI from ${cidr}"
+      }
+    },
+    # The ops subnet exists so an operator can debug every layer from one place:
+    # it reaches the ELB, PostgreSQL, Redis and the CCE API, and nothing else is
+    # opened for it.
+    {
+      "elb-ops" = {
+        sg        = huaweicloud_networking_secgroup.elb.id
+        direction = "ingress"
+        protocol  = "tcp"
+        from      = 443
+        to        = 443
+        cidr      = var.ops_subnet_cidr
+        note      = "Gateway calls from the ops subnet (bastion smoke tests)"
       }
     },
     {
@@ -82,6 +108,25 @@ locals {
         to        = null
         cidr      = "0.0.0.0/0"
         note      = "Backups and monitoring"
+      }
+      # Debugging only: the bastion may reach the data layer, pods may not.
+      "data-ops-postgres" = {
+        sg        = huaweicloud_networking_secgroup.data.id
+        direction = "ingress"
+        protocol  = "tcp"
+        from      = 5432
+        to        = 5432
+        cidr      = var.ops_subnet_cidr
+        note      = "psql from the ops subnet"
+      }
+      "data-ops-redis" = {
+        sg        = huaweicloud_networking_secgroup.data.id
+        direction = "ingress"
+        protocol  = "tcp"
+        from      = 6379
+        to        = 6379
+        cidr      = var.ops_subnet_cidr
+        note      = "redis-cli from the ops subnet"
       }
     },
 
@@ -139,8 +184,14 @@ resource "huaweicloud_vpc_subnet" "this" {
 
   lifecycle {
     precondition {
-      condition     = try(cidrsubnet(var.vpc_cidr, 0, 0) != null, true)
-      error_message = "vpc_cidr is invalid."
+      condition = contains(local.subnet_slots, each.value.cidr)
+      error_message = format(
+        "Subnet %s (%s) does not match the layout carved from %s. Expected one of: %s.",
+        each.key,
+        each.value.cidr,
+        var.vpc_cidr,
+        local.expected_subnets
+      )
     }
   }
 }
@@ -177,7 +228,7 @@ resource "huaweicloud_networking_secgroup" "data" {
 
 resource "huaweicloud_networking_secgroup" "bastion" {
   name                  = var.names["sg_bastion"]
-  description           = "Operator bastion: SSH in from allow-listed ranges, outbound to the VPC"
+  description           = "Ops subnet: SSH in from allow-listed ranges, outbound to the whole VPC"
   delete_default_rules  = true
   enterprise_project_id = var.enterprise_project_id
   tags                  = local.tags

@@ -8,7 +8,7 @@ OUT_DIR ?= out
 
 # Every target delegates to scripts/deploy.sh or a single-purpose script; the
 # Makefile is a convenience layer and must not re-implement any logic.
-.PHONY: help bootstrap init preflight plan apply-infra deploy-app remote-deploy verify \
+.PHONY: help bootstrap creds creds-clear creds-check handoff handoff-clean init preflight plan apply-infra deploy-app remote-deploy verify \
 	smoke migrate mirror fmt validate lint destroy package-chart skill-install
 
 help: ## Show this help
@@ -16,6 +16,22 @@ help: ## Show this help
 
 bootstrap: ## Check the local toolchain and credentials
 	./scripts/bootstrap.sh
+
+creds: ## Store AK/SK in secrets/hw.env (hidden input)
+	./scripts/creds.sh set
+
+creds-clear: ## Remove AK/SK from disk and from this shell check
+	./scripts/creds.sh clear
+
+creds-check: ## Fail if live credentials are still configured
+	./scripts/creds.sh check
+
+handoff: ## Show what a customer must provide, and where each item goes
+	python3 ./scripts/handoff.py form
+
+handoff-clean: ## Back up, then clear every customer value (run after a test)
+	python3 ./scripts/handoff.py scrub
+	python3 ./scripts/handoff.py check
 
 init: ## terraform init for TF_DIR
 	terraform -chdir=$(TF_DIR) init -upgrade

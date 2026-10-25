@@ -33,3 +33,19 @@ compatibility:
   redis_major: ["7"]
   kubernetes_min: "1.28"
   chart_version: "0.1.0"
+
+# CCE / Kubernetes 版本
+#
+# cce_cluster_version 在 deploy-inputs.yaml 里留空：每次部署由
+# scripts/resolve-cce-version.py 通过官方 SDK 查询本区域当前支持的版本，
+# 避免写死一个会被回收的补丁号。
+#
+# docs 里的 URL 是“人工/agent 搜到的官方版本说明页”，check-cce-versions.py 会
+# 抓页面里的 v1.X / v1.X.Y 与下面的 max_minor 对比。华为云文档站是静态 HTML，
+# 表格可以直接解析；如果要更新，按 docs/upgrade-procedure.md 的步骤找到
+# “Kubernetes版本发布记录”页面，把 URL 加到 doc_sources 再跑脚本。
+cce:
+  max_minor: "1.36"        # newest minor known when this file was last checked
+  min_minor: "1.28"        # chart 的 kubeVersion 下限
+  last_checked: "2026-10-25"
+  doc_sources: []           # e.g. ["https://support.huaweicloud.com/intl/zh-cn/usermanual-cce/cce_10_XXXX.html"]

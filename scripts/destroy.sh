@@ -23,3 +23,8 @@ fi
 log "terraform destroy ($TF_DIR)"
 terraform -chdir="$TF_DIR" destroy -input=false
 ok "destroyed"
+
+# The stack is gone; the customer's credentials should not outlive the test.
+if ! "$(dirname "$0")/handoff.py" check >/dev/null 2>&1; then
+  warn "customer data still on disk: run ./scripts/handoff.py scrub"
+fi

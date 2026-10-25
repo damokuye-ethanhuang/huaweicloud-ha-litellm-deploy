@@ -101,16 +101,17 @@ def main() -> int:
     flat, presets = load()
     project = val(flat, "project_name", "litellm")
     region = val(flat, "region", "cn-north-4")
-    vpc = val(flat, "vpc_cidr", "10.0.0.0/16")
+    vpc = val(flat, "vpc_cidr", "10.0.0.0/21")
     access_cidr = val(flat, "subnet_access_cidr", "10.0.0.0/24")
     app_cidr = val(flat, "subnet_app_cidr", "10.0.1.0/24")
     data_cidr = val(flat, "subnet_data_cidr", "10.0.2.0/24")
-    vpce_cidr = val(flat, "subnet_vpce_cidr", "10.0.3.0/27")
+    ops_cidr = val(flat, "subnet_ops_cidr", "10.0.3.0/24")
+    vpce_cidr = val(flat, "subnet_vpce_cidr", "10.0.4.0/26")
     pod_cidr = val(flat, "pod_cidr", "172.16.0.0/16")
     net_type = val(flat, "cce_container_network_type", "vpc-router")
     vpce_on = val(flat, "vpce_enabled", "false").lower() == "true"
-    client = val(flat, "client_cidrs", "10.20.0.0/16")
-    admin = val(flat, "admin_cidrs", "10.20.10.0/24")
+    client = val(flat, "client_cidrs", "10.0.3.0/24")
+    admin = val(flat, "admin_cidrs", "10.0.3.0/24")
     egress = val(flat, "model_endpoint_mode", "vpcep")
     tls = val(flat, "tls_mode", "internal_ca")
     enc = val(flat, "encryption_mode", "kms")
@@ -137,24 +138,26 @@ def main() -> int:
            f"generated {datetime.now(timezone.utc).strftime('%Y-%m-%d')}", 40, 48, 1100, 20, NOTE)
 
     # --- clients -------------------------------------------------------------
-    zone_clients = d.cell(f"企业内网调用方 / Internal clients<br/>{client}", 40, 100, 240, 120, ZONE)
+    # clients live inside the VPC: the ELB has no EIP
+    zone_clients = d.cell(f"业务调用方 / Internal clients<br/>{client}", 40, 100, 240, 120, ZONE)
     c_api = d.cell("<b>业务系统</b><br/>OpenAI SDK / LangChain", 60, 140, 200, 34, box_style("#e8f1fb", "#7aa7d9"))
-    c_adm = d.cell("<b>运维 / 堡垒机</b><br/>Admin UI", 60, 178, 200, 34, box_style("#e8f1fb", "#7aa7d9"))
-    d.cell(f"仅允许：{admin}", 60, 214, 200, 16, NOTE, parent=zone_clients)
+    pc = d.cell("<b>运维 PC / Operator PC</b><br/>普通电脑，只在堡垒机上操作", 60, 178, 200, 34, box_style("#f3f6f9", "#aab5c2"))
+    d.cell(f"仅允许：{client}", 60, 214, 200, 16, NOTE, parent=zone_clients)
 
-    # operator bastion: the only public IP in the stack
-    zone_ops = d.cell("运维入口 / Operator access", 330, 640, 300, 150, ZONE) if bastion else None
+    # ops subnet: the bastion lives here and reaches every service in the VPC
+    zone_ops = d.cell(f"{project}-maas-ops-subnet {ops_cidr}<br/>运维子网（可达 ELB/RDS/DCS/CCE API）",
+                      330, 640, 300, 150, ZONE) if bastion else None
     bastion_box = d.cell(
         f"<b>{project}-maas-bastion</b><br/>按需计费 EIP · {bastion_flavor}<br/>"
-        f"kubectl + helm（CCE 无公网端点）<br/>"
+        f"kubectl + helm + smoke test<br/>"
         f"SSH 白名单：{bastion_ssh or '未开（仅控制台）'}",
         350, 676, 260, 84, box_style("#fff2f2", "#cf7b7b")) if bastion else None
 
     # --- edge / ELB ----------------------------------------------------------
-    zone_edge = d.cell(f"{project}-maas-access-subnet {access_cidr}<br/>接入层（私网，无 EIP）", 330, 100, 300, 190, ZONE)
+    zone_edge = d.cell(f"{project}-maas-access-subnet {access_cidr}<br/>接入层（私网 ELB VIP，无 EIP）", 330, 100, 300, 190, ZONE)
     elb = d.cell(f"<b>{project}-maas-elb</b><br/>独享型 ELB · 弹性规格<br/>私网 VIP · {tls}<br/>:443 → pod:4000",
                  350, 132, 260, 74, box_style("#eaf4ec", "#6aa877"))
-    cert = d.cell(f"证书 {project}-maas-cert", 350, 214, 260, 26, box_style("#f3f6f9", "#aab5c2"))
+    cert = d.cell(f"证书 {project}-maas-cert · 管理入口仅 {admin}", 350, 214, 260, 26, box_style("#f3f6f9", "#aab5c2"))
 
     # --- VPC -----------------------------------------------------------------
     zone_vpc = d.cell(f"VPC {project}-maas-vpc &nbsp;{vpc}", 40, 330, 1180, 520, ZONE)
@@ -183,7 +186,7 @@ def main() -> int:
                  f"key/team/budget/spend_logs", 780, 410, 390, 74, box_style("#eef0fb", "#7d86c9"))
     dcs = d.cell(f"<b>{project}-maas-dcs</b><br/>Redis 7 主备跨 2 AZ<br/>{dcs_flavor}<br/>"
                  f"限流计数 / 路由状态 / 缓存", 780, 500, 390, 74, box_style("#eef0fb", "#7d86c9"))
-    d.cell(f"安全组 {project}-maas-sg-data：5432/6379 仅来自应用子网", 780, 584, 390, 24, NOTE, parent=zone_data)
+    d.cell(f"安全组 {project}-maas-sg-data：5432/6379 来自应用子网与运维子网", 780, 584, 390, 24, NOTE, parent=zone_data)
 
     # vpce subnet
     zone_vpce = d.cell(f"{project}-maas-vpce-subnet {vpce_cidr}", 70, 640, 660, 110, ZONE)
@@ -244,13 +247,14 @@ def main() -> int:
                  70, 800, 660, 190, box_style("#f7f9fc", "#9aa4b2"))
 
     # --- operator path -------------------------------------------------------
+    # The operator PC only reaches the bastion; everything else happens in-VPC.
     if bastion_box is not None:
-        d.edge(c_adm, bastion_box, "SSH（公网 EIP）", EDGE_DASH)
-        d.edge(bastion_box, zone_cce, "helm / kubectl（VPC 内）", EDGE_DASH)
+        d.edge(pc, bastion_box, "SSH 22（公网 EIP）", EDGE_DASH)
+        d.edge(bastion_box, zone_cce, "kubectl / helm（6443）", EDGE_DASH)
+        d.edge(bastion_box, elb, "smoke test / Admin UI（443）", EDGE_DASH)
 
     # --- edges ---------------------------------------------------------------
     d.edge(c_api, elb, "HTTPS 443")
-    d.edge(c_adm, elb, "Admin UI")
     d.edge(elb, pods[0], "转发")
     d.edge(elb, pods[1], "", EDGE_DASH)
     d.edge(elb, pods[2], "", EDGE_DASH)

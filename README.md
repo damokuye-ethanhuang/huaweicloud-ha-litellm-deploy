@@ -70,9 +70,9 @@ database and Redis carry everything that must survive a pod or AZ failure.
 ### Production tier (CCE, HA) — the supported path
 
 ```bash
-export HW_ACCESS_KEY=... HW_SECRET_KEY=...     # a dedicated IAM user, not your main account
+./scripts/creds.sh set          # AK/SK of a dedicated IAM user → secrets/hw.env (gitignored)
 
-$EDITOR deploy-inputs.yaml                          # the only file you edit
+$EDITOR deploy-inputs.yaml      # the only other file you edit
 
 ./scripts/deploy.sh preflight   # validate + render out/
 ./scripts/deploy.sh plan        # save a plan; changes nothing
@@ -80,7 +80,14 @@ $EDITOR deploy-inputs.yaml                          # the only file you edit
 ./scripts/deploy.sh apply-infra # 20–40 min, mostly CCE
 ./scripts/deploy.sh --remote deploy-app   # helm, executed on the bastion
 ./scripts/deploy.sh --remote verify       # smoke test, executed on the bastion
+
+./scripts/handoff.py scrub && ./scripts/handoff.py check   # after the test: no customer data left
 ```
+
+`creds.sh` is the only place credentials are stored. `HW_ACCESS_KEY` /
+`HW_SECRET_KEY` already exported still win, so CI needs no file. `handoff.py
+form` prints the block to send a customer — it says where every value goes
+without asking for a secret in a chat.
 
 `--remote` exists because a machine outside the VPC cannot reach the cluster or
 the gateway: the CCE API has no public endpoint and the ELB is private. The
@@ -155,8 +162,9 @@ Upgrade policy and rollback are in [docs/operations.md](docs/operations.md).
 
 ## Security model
 
-- **No static credentials in the repository or in tfvars.** The provider reads
-  `HW_ACCESS_KEY` / `HW_SECRET_KEY` from the environment.
+- **No static credentials in the repository or in tfvars.** AK/SK live in
+  `secrets/hw.env` (gitignored, `chmod 600`, written by `creds.sh`) or in the
+  environment; `handoff.py check` fails while any of them are still present.
 - **Every password is generated** by `random_password` per deployment: 24
   characters for database/Redis, 48 for the master and salt keys. Nothing is
   copied from another environment.

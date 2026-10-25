@@ -81,9 +81,27 @@ def resolve(region: str) -> list[str]:
     sk = os.environ.get("HW_SECRET_KEY", "")
     project = os.environ.get("HW_PROJECT_ID", "")
     if not (ak and sk):
+        # Same single source as the shell scripts: secrets/hw.env, filled by
+        # scripts/creds.sh. Keeping the parse here avoids importing preflight.
+        env_file = Path(__file__).resolve().parent.parent / "secrets" / "hw.env"
+        if env_file.is_file():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                value = value.strip().strip('"').strip("'")
+                if key == "HW_ACCESS_KEY":
+                    ak = ak or value
+                elif key == "HW_SECRET_KEY":
+                    sk = sk or value
+                elif key == "HW_PROJECT_ID":
+                    project = project or value
+    if not (ak and sk):
         cred = Path(os.path.expanduser("~/.huaweicloud/credentials"))
         if not cred.is_file():
-            die("no credentials: export HW_ACCESS_KEY / HW_SECRET_KEY (or create ~/.huaweicloud/credentials)", 3)
+            die("no credentials: ./scripts/creds.sh set (secrets/hw.env), export HW_ACCESS_KEY / "
+                "HW_SECRET_KEY, or create ~/.huaweicloud/credentials", 3)
 
     credentials = BasicCredentials(ak, sk, project) if ak and sk else None
     builder = CceClient.new_builder()

@@ -101,11 +101,13 @@ cloud:
 # -----------------------------------------------------------------------------
 network:
   - key: vpc_cidr
-    value: "10.0.0.0/22"
+    value: "10.0.0.0/21"
     required: true
     validate: cidr_private_v4
     help: |
-      VPC 网段，必须与本地数据中心、其他 VPC、VPN 对端都不重叠。
+      VPC 网段，固定 /21：模块按顺序切出 access/app/data/ops 四个 /24 和
+      一个 /26 的 VPCE 子网，填错前缀 plan 阶段就会失败。
+      必须与本地数据中心、其他 VPC、VPN 对端都不重叠。
       Must not overlap on-prem ranges reachable over VPN or peering.
     map_to: terraform.vpc_cidr
 
@@ -123,7 +125,7 @@ network:
     value: 10.0.0.0/24
     required: true
     validate: subnet_in_vpc
-    help: "接入子网：内网 ELB VIP、跳板机等入口组件。"
+    help: "接入子网：内网 ELB VIP。运维/堡垒机不放这里，见 subnet_ops_cidr。"
     map_to: terraform.access_subnet_cidr
 
   - key: subnet_app_cidr
@@ -140,12 +142,22 @@ network:
     help: "数据子网：RDS、DCS 等所有数据组件。仅应用子网可访问。"
     map_to: terraform.data_subnet_cidr
 
-  - key: subnet_vpce_cidr
-    value: 10.0.3.0/27
+  - key: subnet_ops_cidr
+    value: 10.0.3.0/24
     required: true
     validate: subnet_in_vpc
     help: |
-      ModelArts 私网接入专用子网（/27，30 个地址，足够几个 VPCEP 终端节点）。
+      运维子网：VPC 内那台堡垒机放在这里，并且可以访问 VPC 内所有服务
+      （ELB 443、RDS 5432、DCS 6379、CCE API 6443）。
+      客户自己的电脑只是普通 PC，不在这个子网里，只能 SSH 到堡垒机。
+    map_to: terraform.ops_subnet_cidr
+
+  - key: subnet_vpce_cidr
+    value: 10.0.4.0/26
+    required: true
+    validate: subnet_in_vpc
+    help: |
+      ModelArts 私网接入专用子网（/26，62 个地址，足够几个 VPCEP 终端节点）。
       测试环境不启用 ModelArts 时可以不创建该子网（见 vpce_enabled）。
     map_to: terraform.vpce_subnet_cidr
 
@@ -154,7 +166,7 @@ network:
     required: true
     help: |
       CCE overlay 容器网段（不占 VPC 地址，不需要新子网）。
-      必须与 VPC 10.0.0.0/22 不重叠。
+      必须与 VPC 10.0.0.0/21 不重叠。
     map_to: terraform.container_network_cidr
 
 # -----------------------------------------------------------------------------
@@ -162,21 +174,22 @@ network:
 # -----------------------------------------------------------------------------
 access:
   - key: client_cidrs
-    value: ["10.0.0.0/24"]
+    value: ["10.0.3.0/24"]
     required: true
     validate: cidr_private_v4_list
     help: |
-      允许调用网关推理接口的源网段（如业务系统所在网段）。
-      纯内网方案里这些必须是私网地址，公网 CIDR 会被拒绝。
+      允许调用网关推理接口的源网段，只能是 VPC 内地址（业务子网、对等连接、
+      VPN 地址池）。ELB 不绑 EIP，公网 CIDR 写在这里没有意义，会被拒绝。
+      默认只有运维子网，接入真实业务时把业务网段加进来。
     map_to: terraform.allowed_client_cidrs
 
   - key: admin_cidrs
-    value: ["10.0.0.0/24"]
+    value: ["10.0.3.0/24"]
     required: true
     validate: cidr_private_v4_list
     help: |
-      允许访问 Admin UI 与密钥管理 API 的网段，应比 client_cidrs 更窄，
-      通常只是运维跳板机或堡垒机网段。
+      允许访问 Admin UI 与密钥管理 API 的网段，应比 client_cidrs 更窄。
+      保留默认值意味着只有堡垒机能打开管理界面。
     map_to: terraform.admin_access_cidrs
 
   - key: gateway_private_ip
@@ -190,31 +203,32 @@ access:
     value: true
     required: false
     help: |
-      CCE 不开公网端点，helm/kubectl 需要一台能连进来的机器。
-      开启后创建一台挂按需计费 EIP 的跳板机（唯一公网 IP），
-      本机 SSH 上去执行 helm。关闭则只能通过云内已有运维网段操作。
+      CCE 不开公网端点，helm/kubectl/冒烟测试都必须从 VPC 内执行。
+      开启后创建一台挂按需计费 EIP 的堡垒机（唯一公网 IP，放在运维子网）。
+      运维 PC 只是普通电脑：SSH 到堡垒机之后，所有命令在堡垒机上跑。
     map_to: terraform.bastion_enabled
 
   - key: bastion_ssh_cidrs
-    value: ["198.51.100.0/24"]
+    value: ["203.0.113.10/32", "198.51.100.0/24"]
     required_if: bastion_enabled=true
     validate: cidr_public_or_private_list
     help: |
-      允许 SSH 到跳板机的源网段（办公网出口 IP/32 或公司网段）。
-      跳板机是唯一公网入口，白名单必须收窄。
+      允许 SSH 到堡垒机的源地址，即运维 PC 的公网出口。
+      这是整套方案里唯一接受公网地址的地方：堡垒机是唯一公网入口。
+      按需加/32，不要放成 /8。
     map_to: terraform.bastion_ssh_cidrs
 
   - key: bastion_eip_bandwidth_mbit
     value: 100
     required_if: bastion_enabled=true
     allowed_int_range: [1, 1000]
-    help: "跳板机 EIP 带宽（Mbit/s），按流量计费。"
+    help: "堡垒机 EIP 带宽（Mbit/s），按流量计费。"
     map_to: terraform.bastion_eip_bandwidth_size
 
   - key: bastion_flavor
     value: c7.large.2
     required_if: bastion_enabled=true
-    help: "跳板机规格，只跑 kubectl/helm，2 核 4G 足够。"
+    help: "堡垒机规格，只跑 kubectl/helm，2 核 4G 足够。"
     map_to: terraform.bastion_flavor
 
   - key: vpn_enabled
@@ -235,46 +249,41 @@ access:
 # -----------------------------------------------------------------------------
 # 每条一项，字段说明：
 #   name           LiteLLM 里对外暴露的模型名（客户端用这个名字调用）
-#   provider       协议类型：openai-compatible | maas | modelarts | azure
-#   model          上游真实模型名
+#   model          上游真实模型名（渲染时自动加 openai/ 前缀，走 OpenAI 兼容协议）
 #   api_base       上游地址；ModelArts 内网接入时填 VPCEP 私网地址
 #   api_key_env    存放密钥的环境变量名，必须与 secrets/app.env 里的键一致
-#   api_key        仅当密钥由免责注入时才填，否则留空
+#   api_key        仅当密钥由网关内联注入时才填，否则留空
 #   mode           chat | embedding | rerank | image_generation
 #   max_tokens     最大输出 token
 #   rpm / tpm      该部署的限速（null 表示不单独限制）
 #
 # 下面的值是**占位默认值**，不是任何真实环境的数据。上线前必须替换：
-#   api_base  改成你的实际接入地址（ModelArts VPCEP 私网地址或模型服务地址）
+#   api_base  改成实际接入地址（ModelArts VPCEP 私网地址或模型服务地址）
 #   model     改成上游真实的模型 ID
 #   api_key   留空，把密钥写进 secrets/app.env（键名见 api_key_env）
-#             若该模型免认证（上游不校验 Key），api_key 留空即可，网关不会发送
-#             Authorization 之外的空凭据；需要显式免认证时把 api_key_env
-#             指向一个值为 dummy 的变量即可（见文件末尾说明）。
+#             若该模型免认证（上游不校验 Key），api_key 留空即可；要显式免认证就把
+#             api_key_env 指向一个值为 dummy 的变量。
 #
 # fallback：两个预置模型互为回退（rollback），规则在 egress.fallback_pairs 里定义。
 models:
-  - name: glm-5.3
-    provider: openai-compatible
-    model: glm-5.3
-    api_base: http://127.0.0.1:9/v1
-    api_key_env: GLM_API_KEY
-    api_key: ""
-    mode: chat
-    max_tokens: 8192
-    rpm: null
-    tpm: null
-
-  - name: deepseek-v4.1-flash
-    provider: openai-compatible
-    model: deepseek-v4.1-flash
-    api_base: http://127.0.0.1:9/v1
-    api_key_env: DEEPSEEK_API_KEY
-    api_key: ""
-    mode: chat
-    max_tokens: 8192
-    rpm: null
-    tpm: null
+- name: glm-5.3
+  model: openai/glm-5.3
+  api_base: https://maas-vpce-ip/v2/
+  api_key_env: GLM_API_KEY
+  api_key: ''
+  mode: chat
+  max_tokens: 8192
+  rpm: null
+  tpm: null
+- name: deepseek-v4.1-flash
+  model: openai/deepseek-v4.1-flash
+  api_base: https://modelarasdpce-ip/v1/
+  api_key_env: DEEPSEEK_API_KEY
+  api_key: ''
+  mode: chat
+  max_tokens: 8192
+  rpm: null
+  tpm: null
 
 # 追加模型示例（取消注释后即生效）：
 #  - name: qwen-internal

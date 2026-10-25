@@ -27,10 +27,6 @@ check shellcheck "needed for scripts/lint.sh"
 check tflint "extra Terraform linting"
 
 printf '\ncredentials (never commit these):\n'
-if [ -n "${HW_ACCESS_KEY:-}" ] && [ -n "${HW_SECRET_KEY:-}" ]; then
-  printf '  HW_ACCESS_KEY  set (%s...)\n' "${HW_ACCESS_KEY:0:4}"
-  printf '  HW_SECRET_KEY  set\n'
-else
-  printf '  HW_ACCESS_KEY / HW_SECRET_KEY  NOT set\n'
-  printf '  export them, or use ~/.huaweicloud/credentials\n'
-fi
+"$(dirname "$0")/creds.sh" status | sed 's/^/  /'
+printf '\n  fill them with: ./scripts/creds.sh set   (writes secrets/hw.env, chmod 600)\n'
+printf '  clear after testing: ./scripts/creds.sh clear\n'

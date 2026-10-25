@@ -25,8 +25,9 @@
 | `project_name` | 所有资源名的前缀 | `litellmtest01` |
 | `owner` | 负责人/团队，写进标签 | `platform-team` |
 | `region` | 区域 | `cn-north-4` |
-| `vpc_cidr` | VPC 网段 | `10.0.0.0/16`（不能与本地数据中心重叠） |
-| `subnet_app_cidr` 等 | 三类子网 | 默认值可用，只要落在 VPC 内 |
+| `vpc_cidr` | VPC 网段 | `10.0.0.0/21`（固定 /21，不能与本地数据中心重叠） |
+| `subnet_app_cidr` 等 | access/app/data/ops 四个 /24 + 一个 /26 | 默认值可用，必须正好是 VPC 切出来的那几段 |
+| `subnet_ops_cidr` | 运维子网，堡垒机所在 | `10.0.3.0/24`；可访问 VPC 内全部服务 |
 | `client_cidrs` | 谁能调用网关 | `["10.20.0.0/16"]` |
 | `admin_cidrs` | 谁能进 Admin UI | `["10.20.10.0/24"]`（比上一条窄） |
 | `model_endpoint_mode` | 出网方式 | 纯内网选 `vpcep` |
@@ -39,10 +40,25 @@
 ## 三个容易踩的坑
 
 1. **CIDR 必须是私网地址。** preflight 会拒绝 `0.0.0.0/0` 和任何公网段——这是纯内网
-   方案，公网暴露不是配置问题而是需求问题。
+   方案，公网暴露不是配置问题而是需求问题。唯一例外是 `bastion_ssh_cidrs`：它写的是
+   运维 PC 的公网出口，只用于 SSH 到堡垒机。
 2. **`admin_cidrs` 不是 `client_cidrs` 的子集也没关系，但不要更宽。** Admin UI 能创建
    密钥，它的可达范围应该比推理接口更小。
 3. **加密的 `disabled` 分支只为实验。** 生产环境即使选 `dew`，也不要选 `disabled`。
+
+## 凭据放哪
+
+`deploy-inputs.yaml` 里永远不写密钥，只写**变量名**：
+
+| 什么东西 | 放哪里 | 谁来填 |
+|---|---|---|
+| 华为云 AK/SK | `secrets/hw.env`（`./scripts/creds.sh set`，gitignore） | 部署方或客户 |
+| 模型 API key | `secrets/app.env`，变量名与 `api_key_env` 一致 | 部署方或客户 |
+| 其余参数 | `deploy-inputs.yaml` | 部署方或客户 |
+
+把 `./scripts/handoff.py form` 的输出直接发给客户，上面写清了每一项该填到哪；测试
+结束跑 `./scripts/handoff.py scrub && ./scripts/handoff.py check`，确认没有客户数据
+留在机器上。
 
 ## 模型列表：直接粘贴表格
 

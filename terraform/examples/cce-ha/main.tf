@@ -131,6 +131,7 @@ module "network" {
   access_subnet_cidr     = var.access_subnet_cidr
   app_subnet_cidr        = var.app_subnet_cidr
   data_subnet_cidr       = var.data_subnet_cidr
+  ops_subnet_cidr        = var.ops_subnet_cidr
   vpce_subnet_cidr       = var.vpce_subnet_cidr
   create_vpce_subnet     = var.vpce_enabled
   availability_zone      = local.azs[0]
@@ -190,6 +191,7 @@ module "cce" {
   names                  = local.names
   vpc_id                 = module.network.vpc_id
   subnet_id              = module.network.app_subnet_id
+  ops_cidr               = module.network.ops_subnet_cidr
   container_network_cidr = var.pod_cidr
   container_network_type = var.cce_container_network_type
   cluster_flavor         = var.cce_cluster_flavor
@@ -214,7 +216,7 @@ module "bastion" {
 
   names                 = local.names
   vpc_id                = module.network.vpc_id
-  subnet_id             = module.network.access_subnet_id
+  subnet_id             = module.network.ops_subnet_id
   security_group_id     = module.network.bastion_security_group_id
   availability_zone     = local.azs[0]
   flavor_id             = var.bastion_flavor

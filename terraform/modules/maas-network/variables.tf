@@ -34,6 +34,16 @@ variable "data_subnet_cidr" {
   type        = string
 }
 
+variable "ops_subnet_cidr" {
+  description = "Operations subnet: the in-VPC bastion and any future jump host. May reach every service in the VPC. One /24."
+  type        = string
+
+  validation {
+    condition     = can(cidrhost(var.ops_subnet_cidr, 0)) && tonumber(split("/", var.ops_subnet_cidr)[1]) == 24
+    error_message = "ops_subnet_cidr must be a valid IPv4 /24."
+  }
+}
+
 variable "vpce_subnet_cidr" {
   description = "Small dedicated subnet for ModelArts VPCEP endpoints (/27 is enough). Created only when create_vpce_subnet is true."
   type        = string

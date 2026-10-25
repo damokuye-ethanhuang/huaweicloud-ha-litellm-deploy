@@ -25,6 +25,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
 REPO="$(repo_root)"
+load_credentials
 TF_DIR="$REPO/terraform/examples/cce-ha"
 OUT_DIR="$REPO/out"
 REMOTE=0
@@ -43,9 +44,15 @@ export KUBECONFIG="$KUBECONFIG_FILE"
 resolve_cce_version() {
   # CCE retires versions and wants an exact patch; resolve it per run instead of
   # pinning a value that goes stale. Skipped silently without credentials.
-  local py="$REPO/.venv-sdk/bin/python"
-  [ -x "$py" ] || return 0
-  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
+  local py=""
+  for candidate in "$REPO/.venv-sdk/bin/python" python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import huaweicloudsdkcce' >/dev/null 2>&1; then
+      py="$candidate"
+      break
+    fi
+  done
+  [ -n "$py" ] || return 0
+  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$REPO/secrets/hw.env" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
     return 0
   fi
   log "resolving the CCE version currently supported in this region"

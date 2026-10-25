@@ -112,7 +112,7 @@ preferred for reproducibility.
 ## Verifying a region quickly
 
 ```bash
-export HW_ACCESS_KEY=... HW_SECRET_KEY=...
+./scripts/creds.sh load    # exports HW_ACCESS_KEY / HW_SECRET_KEY from secrets/hw.env
 cat > /tmp/az.tf <<'EOF'
 terraform {
   required_providers {

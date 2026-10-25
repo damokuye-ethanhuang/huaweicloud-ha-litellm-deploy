@@ -224,12 +224,72 @@ def tools(report: Report, need_cluster: bool) -> None:
         report.add(f"tool:{tool}", OK if path else FAIL, path or "missing - see docs/deployment.md")
 
 
+CRED_FILE = REPO / "secrets" / "hw.env"
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
+    """Read the KEY=VALUE file the operator fills in. No shell, no expansion."""
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
 def credentials(report: Report) -> None:
-    cred_file = Path(os.path.expanduser("~/.huaweicloud/credentials"))
-    if (os.environ.get("HW_ACCESS_KEY") and os.environ.get("HW_SECRET_KEY")) or cred_file.is_file():
-        report.add("credentials", OK, "AK/SK present (dedicated IAM user recommended)")
+    file_values = parse_env_file(CRED_FILE)
+    has_env = bool(os.environ.get("HW_ACCESS_KEY") and os.environ.get("HW_SECRET_KEY"))
+    has_file = bool(file_values.get("HW_ACCESS_KEY") and file_values.get("HW_SECRET_KEY"))
+    sdk_file = Path(os.path.expanduser("~/.huaweicloud/credentials")).is_file()
+
+    if has_env or has_file:
+        where = "environment" if has_env else str(CRED_FILE.relative_to(REPO))
+        report.add("credentials", OK, f"AK/SK present from {where} (dedicated IAM user recommended)")
+    elif sdk_file:
+        report.add("credentials", OK, "AK/SK present in ~/.huaweicloud/credentials")
     else:
-        report.add("credentials", FAIL, "export HW_ACCESS_KEY / HW_SECRET_KEY")
+        report.add(
+            "credentials",
+            FAIL,
+            f"fill {CRED_FILE.relative_to(REPO)} (./scripts/creds.sh set) or export HW_ACCESS_KEY / HW_SECRET_KEY",
+        )
+
+
+def check_subnet_overlaps(flat: dict[str, Any], report: Report) -> None:
+    """Overlapping subnets are rejected by the VPC API only after a long apply."""
+    keys = [
+        "subnet_access_cidr",
+        "subnet_app_cidr",
+        "subnet_data_cidr",
+        "subnet_ops_cidr",
+        "subnet_vpce_cidr",
+    ]
+    nets = {}
+    for key in keys:
+        value = flat.get(key, {}).get("value")
+        if not value:
+            continue
+        try:
+            nets[key] = ipaddress.ip_network(str(value), strict=False)
+        except ValueError:
+            continue  # reported by the per-field validator
+
+    clashes = [
+        f"{a} ({nets[a]}) overlaps {b} ({nets[b]})"
+        for i, a in enumerate(nets)
+        for b in list(nets)[i + 1 :]
+        if nets[a].overlaps(nets[b])
+    ]
+    if clashes:
+        for clash in clashes:
+            report.add("subnets-overlap", FAIL, clash)
+    else:
+        report.add("subnets", OK, f"{len(nets)} subnets, no overlap")
 
 
 # ---------------------------------------------------------------- rendering ---
@@ -277,6 +337,7 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "access_subnet_cidr": v.get("subnet_access_cidr"),
         "app_subnet_cidr": v.get("subnet_app_cidr"),
         "data_subnet_cidr": v.get("subnet_data_cidr"),
+        "ops_subnet_cidr": v.get("subnet_ops_cidr"),
         "vpce_subnet_cidr": v.get("subnet_vpce_cidr"),
         "pod_cidr": v.get("pod_cidr") or "172.16.0.0/16",
         "cce_container_network_type": "overlay_l2",
@@ -368,8 +429,12 @@ def render_models(doc: dict[str, Any]) -> str:
     models = doc.get("models") or []
     entries = []
     for m in models:
+        # Accept both "glm-5.3" and "openai/glm-5.3": the prefix is added once,
+        # so a customer can paste either form without producing "openai/openai/...".
+        raw_model = str(m["model"])
+        model_id = raw_model if "/" in raw_model else f"openai/{raw_model}"
         litellm_params = {
-            "model": f"openai/{m['model']}",
+            "model": model_id,
             "api_key": f"os.environ/{m.get('api_key_env') or 'MODEL_API_KEY'}",
         }
         if m.get("api_base"):
@@ -412,12 +477,12 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 | 资源 | 名称 |
 |---|---|
 | VPC | `{v.get('project_name')}-maas-vpc` |
-| 接入/应用/数据/VPCE 子网 | `-maas-access-subnet` / `-maas-app-subnet` / `-maas-data-subnet` / `-maas-vpce-subnet` |
+| 接入/应用/数据/运维/VPCE 子网 | `-maas-access-subnet` / `-maas-app-subnet` / `-maas-data-subnet` / `-maas-ops-subnet` / `-maas-vpce-subnet` |
 | 安全组 | `-maas-sg-elb` / `-maas-sg-data` / `-maas-sg-admin` / `-maas-sg-bastion` |
 | CCE 集群 | `{v.get('project_name')}-maas-cce` |
 | RDS / DCS | `{v.get('project_name')}-maas-rds` / `-maas-dcs` |
 | 内网 ELB | `{v.get('project_name')}-maas-elb` |
-| 跳板机 | `{v.get('project_name')}-maas-bastion`（唯一公网 EIP） |
+| 堡垒机 | `{v.get('project_name')}-maas-bastion`（运维子网，唯一公网 EIP） |
 | 密钥（CSMS） | `{v.get('project_name')}-litellm-master-key` 等 |
 
 ## 网络 / Network
@@ -428,8 +493,9 @@ Generated from `deploy-inputs.yaml`; rerun preflight to refresh.
 | VPC | {v.get('vpc_cidr')} |
 | 应用子网 | {v.get('subnet_app_cidr')} |
 | 数据子网 | {v.get('subnet_data_cidr')} |
+| 运维子网 | {v.get('subnet_ops_cidr')}（堡垒机所在，可达 VPC 内全部服务） |
 | VPCE 子网 | {v.get('subnet_vpce_cidr')} |
-| 容器网段 | {", ".join(v.get('subnet_eni_cidrs') or [])} |
+| 容器网段 | {v.get('pod_cidr') or '172.16.0.0/16'}（overlay，不占 VPC 地址） |
 | 允许调用 | {", ".join(v.get('client_cidrs') or []) or "(未填)"} |
 | 允许管理 | {", ".join(v.get('admin_cidrs') or []) or "(未填)"} |
 | 网关 VIP | {v.get('gateway_private_ip') or "由 ELB 分配"} |
@@ -558,12 +624,13 @@ def main() -> int:
         missing = [f for f in ("name", "model", "mode") if not m.get(f)]
         if missing:
             report.add(f"models[{name}]", FAIL, f"missing fields: {', '.join(missing)}")
-        elif m.get("provider") in ("modelarts", "maas") and not m.get("api_base") and flat.get("model_endpoint_mode", {}).get("value") != "vpcep":
+        elif not m.get("api_base") and not m.get("api_key_env") and flat.get("model_endpoint_mode", {}).get("value") != "vpcep":
             report.add(f"models[{name}]", WARN, "no api_base and no ModelArts VPC endpoint: the model will not be reachable")
         else:
-            report.add(f"models[{name}]", OK, f"{m.get('provider')} / {m.get('model')}")
+            report.add(f"models[{name}]", OK, f"{m.get('model')} ({m.get('mode', 'chat')})")
 
     v = merged(flat)
+    check_subnet_overlaps(flat, report)
     if not v.get("cce_cluster_version"):
         report.add("cce_cluster_version", WARN, "empty: resolved at deploy time via huaweicloudsdkcce (scripts/resolve-cce-version.py)")
     check_version(str(v.get("litellm_version", "")), report, bool(os.environ.get("ACK_UPGRADE")))

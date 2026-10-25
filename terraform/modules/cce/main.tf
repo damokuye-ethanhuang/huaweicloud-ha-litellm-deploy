@@ -98,3 +98,19 @@ resource "huaweicloud_cce_node" "workers" {
     delete = "30m"
   }
 }
+
+# The control-plane security group is created by CCE with its own defaults. Add
+# exactly one rule: an operator on the ops subnet must be able to run
+# kubectl/helm against the private API endpoint, and nothing wider.
+resource "huaweicloud_networking_secgroup_rule" "ops_kube_api" {
+  count = var.ops_cidr == "" ? 0 : 1
+
+  security_group_id = huaweicloud_cce_cluster.this.security_group_id
+  direction         = "ingress"
+  ethertype         = "IPv4"
+  protocol          = "tcp"
+  port_range_min    = 6443
+  port_range_max    = 6443
+  remote_ip_prefix  = var.ops_cidr
+  description       = "kubectl and helm from the ops subnet"
+}

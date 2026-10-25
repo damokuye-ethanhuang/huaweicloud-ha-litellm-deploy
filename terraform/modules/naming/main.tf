@@ -59,10 +59,11 @@ locals {
   names = {
     # --- network ---
     vpc = "${local.prefix}-maas-vpc"
-    # three /24s inside the VPC, one per role, plus a reserved container /24
+    # three /24s inside the VPC, one per role, plus an ops /24 and a VPCE /26
     subnet_access = "${local.prefix}-maas-access-subnet"
     subnet_app    = "${local.prefix}-maas-app-subnet"
     subnet_data   = "${local.prefix}-maas-data-subnet"
+    subnet_ops    = "${local.prefix}-maas-ops-subnet"
     subnet_vpce   = "${local.prefix}-maas-vpce-subnet"
     sg_elb        = "${local.prefix}-maas-sg-elb"
     sg_data       = "${local.prefix}-maas-sg-data"

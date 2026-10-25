@@ -46,8 +46,9 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 |---|---|---|---|
 | [ ] | `[必选]` 网关不暴露公网 | ELB `internal=true`，不绑 EIP | `preflight` |
 | [ ] | `[必选]` CCE 关闭公网 endpoint | 只留私网 kubeconfig | `preflight` |
-| [ ] | `[必选]` 唯一的公网出口是跳板机 | 按需 EIP，带宽 `bastion_eip_bandwidth_mbit`，用完可解绑 | `preflight` |
-| [ ] | `[必选]` 跳板机 SSH 来源收敛 | `bastion_ssh_cidrs` 只写运维出口 `/32`，禁止 `0.0.0.0/0` | `preflight` |
+| [ ] | `[必选]` 唯一的公网入口是堡垒机 | 按需 EIP，带宽 `bastion_eip_bandwidth_mbit`，用完可解绑 | `preflight` |
+| [ ] | `[必选]` 堡垒机 SSH 来源收敛 | `bastion_ssh_cidrs` 只写运维出口 `/32`，禁止 `0.0.0.0/0` | `preflight` |
+| [ ] | `[必选]` 运维独立子网 | ops 子网单独 /24，可访问 ELB/RDS/DCS/CCE API，不与应用混布 | `preflight` |
 | [ ] | `[必选]` NAT 出口策略明确 | 模型后端在公网才需要 NAT；纯内网则不开 | 人工 |
 | [ ] | `[条件]` 是否对外提供 MaaS | **本方案默认不做**；要做需另走安全评审并加 WAF | 人工 |
 
@@ -69,6 +70,7 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 | [ ] | `[必选]` DCS 主备（不是单实例） | 规格名带 `redis.ha.` | `preflight` |
 | [ ] | `[必选]` 备份策略与保留期 | 自动备份开启，保留期按合规要求 | 人工 |
 | [ ] | `[必选]` 迁移由 Job 执行 | 实例侧 `DISABLE_SCHEMA_UPDATE=true`，不并发建表 | `preflight` |
+| [ ] | `[必选]` 表结构由 LiteLLM 官方迁移创建 | Prisma 迁移随镜像分发，禁止手写 SQL / 导入 dump | 人工 + `verify` |
 | [ ] | `[必选]` 数据库账号非 root | 应用账号只有本库 DML/DDL 权限 | 人工 |
 
 ## 6. 加密与密钥
@@ -112,7 +114,7 @@ cp docs/sa-checklist.md docs/sa-checklist.<项目名>.md
 | 节点规格 | `c7.xlarge.2` × 1/AZ | |
 | 容器网络 | `vpc-router`，不新建容器子网 | |
 | 网关副本 | 3，`PDB minAvailable=2` | |
-| 外网暴露 | 仅跳板机 EIP，网关零公网 | |
+| 外网暴露 | 仅堡垒机 EIP，网关零公网 | |
 | 数据层 | RDS PG 主备 + DCS Redis 主备 | |
 | 加密 | `kms` | |
 | Key 计费配额 | 不启用（仅做模型权限隔离） | |

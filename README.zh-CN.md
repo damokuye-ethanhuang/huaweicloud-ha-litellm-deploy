@@ -55,8 +55,8 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 ### 生产版（CCE 高可用）——受支持的路径
 
 ```bash
-export HW_ACCESS_KEY=... HW_SECRET_KEY=...   # 专用 IAM 用户，不要用主账号
-$EDITOR deploy-inputs.yaml                   # 唯一需要改的文件
+./scripts/creds.sh set          # 专用 IAM 用户的 AK/SK → secrets/hw.env（已 gitignore）
+$EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 
 ./scripts/deploy.sh preflight   # 校验参数并渲染 out/
 ./scripts/deploy.sh plan        # 生成 plan，不做任何变更
@@ -64,7 +64,13 @@ $EDITOR deploy-inputs.yaml                   # 唯一需要改的文件
 ./scripts/deploy.sh apply-infra # 20–40 分钟，主要是 CCE
 ./scripts/deploy.sh --remote deploy-app   # 在堡垒机上跑 helm
 ./scripts/deploy.sh --remote verify       # 在堡垒机上做 smoke
+
+./scripts/handoff.py scrub && ./scripts/handoff.py check   # 测完清场，必须输出 clean
 ```
+
+`creds.sh` 是凭据的唯一落盘位置；已经 export 的 `HW_ACCESS_KEY` / `HW_SECRET_KEY`
+优先级更高，所以 CI 不需要文件。客户交付时把 `./scripts/handoff.py form` 的输出发过去，
+上面写明了每个值填到哪，不会要求在聊天窗口里贴密钥。
 
 `--remote` 的原因：VPC 外的机器既连不上集群（CCE 无公网端点），也访问不到
 网关（ELB 是私网）。堡垒机是唯一有公网 IP 的主机，所以集群内动作都在那里执行，
@@ -115,8 +121,8 @@ terraform -chdir=terraform/examples/cce-ha output -json app_env | jq -r .LITELLM
 
 ## 安全模型
 
-- **仓库和 tfvars 里没有静态凭据**，provider 从 `HW_ACCESS_KEY` /
-  `HW_SECRET_KEY` 读取。
+- **仓库和 tfvars 里没有静态凭据**：AK/SK 放在 `secrets/hw.env`（已 gitignore、
+  `chmod 600`，由 `creds.sh` 写入）或环境变量里；`handoff.py check` 只要还留着就报错。
 - **所有密码每次部署随机生成**：数据库/Redis 24 位，主密钥/盐密钥 48 位。
 - **`LITELLM_SALT_KEY` 带 `prevent_destroy`**：它加密数据库里的 provider
   凭据，换了就解不开。
