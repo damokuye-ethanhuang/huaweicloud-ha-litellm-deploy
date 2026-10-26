@@ -887,6 +887,12 @@ def main() -> int:
         if err:
             report.add(key, FAIL, err)
             continue
+        if item.get("placeholder") and str(value) == str(item.get("placeholder_value")):
+            shipped = item.get("placeholder_value")
+            if isinstance(shipped, list):
+                shipped = ", ".join(map(str, shipped))
+            report.add(key, WARN, f"still the shipped placeholder '{shipped}' - replace it before deploying")
+            continue
         shown = value if not isinstance(value, list) else (", ".join(map(str, value)) or "(auto)")
         report.add(key, OK, str(shown))
 
@@ -954,6 +960,16 @@ def main() -> int:
             region_exists(str(v["region"]), report)
         if v.get("grafana_endpoint"):
             tcp_probe(str(v["grafana_endpoint"]), report)
+
+    if v.get("image_supply_chain") == "swr" and v.get("swr_org") and v.get("project_name") \
+            and v["swr_org"] != v["project_name"]:
+        report.add(
+            "swr_org",
+            WARN,
+            f"differs from project_name ({v['project_name']}): images go to "
+            f"swr.<region>.myhuaweicloud.com/{v['swr_org']}/litellm - keep them equal unless that "
+            "organisation already exists and you meant it",
+        )
 
     if v.get("metric_backend") == "aom" and not v.get("grafana_endpoint"):
         report.add("grafana_endpoint", WARN, "AOM selected but no Grafana endpoint: dashboards have nowhere to live")

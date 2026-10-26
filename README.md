@@ -78,7 +78,7 @@ survive a pod or AZ failure.
 
 | Phase | You provide | Command | Exit criterion |
 |---|---|---|---|
-| **1 params** | `deploy-inputs.yaml`: `project_name` / `owner` / `region` / `bastion_ssh_cidrs` / `client_cidrs` | `preflight` -> `plan` | 0 blocking, plan summary acknowledged |
+| **1 params** | `deploy-inputs.yaml`: `project_name` / `owner` / `region` / `bastion_ssh_cidrs` (field-by-field reasons in [`docs/phase1-inputs.md`](docs/phase1-inputs.md)) | `preflight` -> `plan` | 0 blocking, plan summary acknowledged |
 | **2 baseline** | nothing (no models) | `apply-infra` -> `deploy-app` -> `verify` | readiness `db/redis connected`, `/v1/models` returns **200 + an empty array** |
 | **3 models** | `models.yaml`: models + fallbacks | `models --check` -> `models --apply` | model list correct, one real completion, fallback works both ways |
 

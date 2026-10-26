@@ -51,20 +51,54 @@ def row_for(section: str, item: dict) -> list[str]:
     return [section, item["key"], shown, required, allowed, help_text, item.get("map_to", "")]
 
 
+def condition_holds(expr: str, values: dict) -> bool:
+    """`required_if` is `key=v1,v2`; a field that is not applicable right now is
+    not something a human has to fill (certificate_id when tls_mode=none)."""
+    if not expr:
+        return True
+    key, _, wanted = expr.partition("=")
+    actual = str(values.get(key.strip(), "")).strip()
+    return actual in {w.strip() for w in wanted.split(",")}
+
+
+def actionable(item: dict, values: dict) -> bool:
+    """True when a human still has to touch this field: a marked placeholder that
+    still holds its shipped value, or a required field that is empty."""
+    value = item.get("value")
+    if item.get("placeholder") and str(value) == str(item.get("placeholder_value")):
+        return True
+    if not condition_holds(str(item.get("required_if") or ""), values):
+        return False
+    if item.get("required") is not True:
+        return False
+    return value in (None, "", []) or value is False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--format", choices=["markdown", "csv"], default="markdown")
     ap.add_argument("--inputs", default=str(INPUTS))
+    ap.add_argument("--actionable", action="store_true",
+                    help="only the fields that still need a human: marked placeholders and empty required ones")
     args = ap.parse_args()
 
     doc = yaml.safe_load(Path(args.inputs).read_text(encoding="utf-8")) or {}
+    values: dict = {}
+    for items in doc.values():
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict) and "key" in item:
+                    values[item["key"]] = item.get("value")
     rows: list[list[str]] = []
     for section, items in doc.items():
         if not isinstance(items, list):
             continue
         for item in items:
-            if isinstance(item, dict) and "key" in item:
-                rows.append(row_for(section, item))
+            if not (isinstance(item, dict) and "key" in item):
+                continue
+            if args.actionable and not actionable(item, values):
+                continue
+            rows.append(row_for(section, item))
 
     if args.format == "csv":
         writer = csv.writer(sys.stdout)
@@ -72,6 +106,8 @@ def main() -> int:
         writer.writerows(rows)
         return 0
 
+    if args.actionable:
+        print(f"<!-- {len(rows)} field(s) still need you -->")
     print("| " + " | ".join(COLUMNS) + " |")
     print("|" + "|".join(["---"] * len(COLUMNS)) + "|")
     for row in rows:

@@ -144,6 +144,7 @@ script, a Terraform module or a document is missing from it.
 | `docs/permissions.md` | Required IAM roles per stage, minimal custom policy, CCE agency caveat. |
 | `docs/sa-checklist.md` | Tick-box planning checklist: network, egress, data, encryption, go-live. |
 | `docs/inputs-guide.md` | How to fill each input; models live in `models.yaml` (phase 3). |
+| `docs/phase1-inputs.md` | 第 1 阶段：四个必须填的项、换 region 要连带改的项、其余默认值为什么可信，附可粘贴提示词。 |
 | `docs/credentials.md` | How to hand over AK/SK the four ways, what lands on disk, the four ways it fails, and how to prove it is gone. |
 | `docs/manual-deployment.md` | Console click-through when Terraform is not allowed. |
 | `docs/upgrade-procedure.md` | What a version bump actually requires before `ACK_UPGRADE=1`. |

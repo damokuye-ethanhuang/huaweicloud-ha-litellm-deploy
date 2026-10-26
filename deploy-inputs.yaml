@@ -35,6 +35,8 @@ version: 1
 project:
   - key: project_name
     value: "example-litellm"
+    placeholder: true
+    placeholder_value: example-litellm
     required: true
     format: '^[a-z][a-z0-9-]{2,23}$'
     help: |
@@ -54,6 +56,8 @@ project:
 
   - key: owner
     value: ""
+    placeholder: true
+    placeholder_value: 
     required: true
     format: '.{2,40}'
     help: "负责团队或人，写入标签和告警通知。Team or owner recorded in tags."
@@ -279,6 +283,8 @@ access:
 
   - key: bastion_ssh_cidrs
     value: ["203.0.113.10/32"]
+    placeholder: true
+    placeholder_value: ["203.0.113.10/32"]
     required_if: bastion_enabled=true
     validate: cidr_public_or_private_list
     help: |
@@ -358,6 +364,8 @@ image_supply:
 
   - key: swr_org
     value: "example-litellm"
+    placeholder: true
+    placeholder_value: example-litellm
     required_if: image_supply_chain=swr
     help: |
       SWR 组织（namespace）。镜像将被推到 swr.<region>.myhuaweicloud.com/<swr_org>/litellm。
