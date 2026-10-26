@@ -263,6 +263,7 @@ module "bastion" {
   admin_password        = random_password.bastion[0].result
   key_pair              = one(huaweicloud_compute_keypair.bastion[*].name) != null ? one(huaweicloud_compute_keypair.bastion[*].name) : ""
   ssh_public_key        = var.bastion_public_key != "" ? var.bastion_public_key : tls_private_key.bastion[0].public_key_openssh
+  eip_enabled           = var.bastion_eip_enabled
   eip_bandwidth_size    = var.bastion_eip_bandwidth_size
   eip_charge_mode       = var.bastion_eip_charge_mode
   enterprise_project_id = local.eps_id

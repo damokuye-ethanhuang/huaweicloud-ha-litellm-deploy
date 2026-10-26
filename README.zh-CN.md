@@ -69,6 +69,8 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 
 每阶段可直接粘贴的提示词在 [`docs/prompts.md`](docs/prompts.md)。
 
+三阶段都验收通过后做**收尾封网**：`CONFIRM=yes ./scripts/deploy.sh seal` 删除堡垒机 EIP，之后 VPC 内没有任何公网入口（这是这套设计的最终形态）。需要再运维时 `unseal` 重开，IP 会变。
+
 模型单独成阶段的原因：它变更最频繁，而 `terraform apply` 不该为了加一个模型跑一遍。第 2
 阶段部署的是「没有任何上游也能跑通」的网关，这样 `/v1/models` 返回空数组才是控制面的
 真实信号，而不是被模型配置掩盖。

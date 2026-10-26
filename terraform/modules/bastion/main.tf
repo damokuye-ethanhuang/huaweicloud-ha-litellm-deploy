@@ -17,7 +17,12 @@ locals {
   }) : null
 }
 
+# Seal step: once the deployment is verified, the EIP is what keeps the stack
+# reachable from the internet. `bastion_eip_enabled = false` removes it and the
+# association in one apply, leaving every other resource untouched.
 resource "huaweicloud_vpc_eip" "bastion" {
+  count = var.eip_enabled ? 1 : 0
+
   publicip {
     type = var.eip_type
   }
@@ -58,6 +63,7 @@ resource "huaweicloud_compute_instance" "bastion" {
 }
 
 resource "huaweicloud_compute_eip_associate" "bastion" {
-  public_ip   = huaweicloud_vpc_eip.bastion.address
+  count       = var.eip_enabled ? 1 : 0
+  public_ip   = huaweicloud_vpc_eip.bastion[0].address
   instance_id = huaweicloud_compute_instance.bastion.id
 }

@@ -122,3 +122,42 @@ apply 创建的资源数量、三个副本的状态、readiness 原文、/v1/mod
 /v1/models 原文、一次 completion 的请求与响应（脱敏）、fallback 实测结论、
 当前快照路径，以及回滚命令。
 ```
+
+---
+
+## 收尾：封网（三阶段完成之后）
+
+部署验证通过、模型也导完了，最后把仅有的公网入口去掉。整套设计里只有堡垒机有 EIP，
+封网就是删掉它——之后 VPC 里没有任何资源能从公网访问。
+
+```text
+三阶段都完成了，现在做封网收尾。
+
+【前提检查，缺一不可】
+- 第 2 阶段验收已过：三个副本 Running、readiness db/redis connected
+- 第 3 阶段验收已过：/v1/models 与 models.yaml 一致、一次真实 completion 成功
+- 我已经不需要再从公网 SSH 进堡垒机了（封网后进不去，只能从 VPC 内访问）
+
+【执行】
+1. 跑 CONFIRM 未设置的形式：./scripts/deploy.sh seal
+   它会：把 deploy-inputs.yaml 的 bastion_eip_enabled 改成 false → 渲染 → terraform plan，
+   然后把 plan 给我看。这一步不会真的删东西。
+2. 我看完 plan（应该只有 EIP 和它的绑定关系两个资源被销毁）说「确认」，
+   你再跑 CONFIRM=yes ./scripts/deploy.sh seal。
+3. 脚本会自己校验：bastion_public_ip 必须为空、state 里不能再有 huaweicloud_vpc_eip。
+
+【验收】
+- terraform output bastion_public_ip 返回空
+- terraform state list 里没有 huaweicloud_vpc_eip
+- 用封网前的那个公网 IP 去 ssh，应该超时（不是拒绝）
+- 集群内 kubectl get svc/ingress 仍然正常（内网 ELB VIP 不受影响）
+
+【规则】
+- 不要手工去控制台删 EIP，也不要用 SDK 直接调 API：那样 Terraform state 会和现实不一致，
+  下次 apply 会试图重建。
+- 不要顺手删别的 EIP：脚本只处理本套 stack 创建的那一个。
+- 需要再运维时用 CONFIRM=yes ./scripts/deploy.sh unseal（会重新申请 EIP，IP 会变）。
+
+【结束时给我】
+seal 前后的资源数、bastion_public_ip 的值（应为空）、以及一句"当前无公网入口"的确认。
+```

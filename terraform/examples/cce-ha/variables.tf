@@ -564,3 +564,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "bastion_eip_enabled" {
+  description = "Give the bastion a public EIP. Set false (scripts/deploy.sh seal) once the deployment is verified."
+  type        = bool
+  default     = true
+}

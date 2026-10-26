@@ -646,6 +646,33 @@ renders the page with headless Chrome, then calls readiness and `/v1/models`.
 Artifacts are gitignored; attach them to a change request instead of describing
 the deployment.
 
+## 8c. Closing: seal the stack (no public IP left)
+
+The design ends closed. Only the bastion ever held a public EIP, so the last step
+is one switch:
+
+```bash
+./scripts/deploy.sh seal                 # renders + plans, changes nothing
+CONFIRM=yes ./scripts/deploy.sh seal     # applies: EIP + association destroyed
+```
+
+`seal` writes `bastion_eip_enabled: false` into `deploy-inputs.yaml` rather than
+passing `-var`, because a `-var` override leaves the file saying `true` and the
+next plain `apply` re-creates the EIP. After applying it asserts the outcome:
+`bastion_public_ip` is empty and no `huaweicloud_vpc_eip` remains in state.
+
+What stops working afterwards, by design:
+
+| Action | After seal |
+|---|---|
+| ssh to the bastion from the internet | times out (the EIP no longer exists) |
+| `./scripts/deploy.sh --remote ...` | cannot reach the bastion; run `unseal` first |
+| call the gateway from outside the VPC | never worked - the ELB is internal |
+| pods pulling from SWR, writing to LTS/AOM | unaffected (all intra-VPC or cloud-internal) |
+
+`CONFIRM=yes ./scripts/deploy.sh unseal` re-creates the EIP for maintenance. The
+public address changes, so update any allow-list that pinned the old one.
+
 ## 9. Teardown
 
 ```bash

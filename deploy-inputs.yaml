@@ -307,6 +307,17 @@ access:
       helm 部署都走它。
     map_to: terraform.bastion_eip_bandwidth_size
 
+  - key: bastion_eip_enabled
+    value: true
+    required_if: bastion_enabled=true
+    help: |
+      是否给堡垒机挂公网 EIP。true = 部署期间可以 SSH 进来执行 helm；
+      false = 封网状态，VM 内所有组件都没有公网入口（整套架构的最终形态）。
+      三阶段部署验证完成后用 ./scripts/deploy.sh seal 切换为 false，
+      它会先出 plan、确认后 apply，只删除 EIP 与绑定关系，不动其它资源。
+      需要再次运维时用 ./scripts/deploy.sh unseal 重新申请（IP 会变）。
+    map_to: terraform.bastion_eip_enabled
+
   - key: bastion_flavor
     value: c7.large.2
     required_if: bastion_enabled=true

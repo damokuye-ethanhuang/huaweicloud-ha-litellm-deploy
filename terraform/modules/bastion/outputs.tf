@@ -4,8 +4,8 @@ output "instance_id" {
 }
 
 output "public_ip" {
-  description = "Pay-per-use EIP of the operator bastion. The only public IP in the stack."
-  value       = huaweicloud_vpc_eip.bastion.address
+  description = "Pay-per-use EIP of the operator bastion. The only public IP in the stack; empty once sealed."
+  value       = var.eip_enabled ? huaweicloud_vpc_eip.bastion[0].address : ""
 }
 
 output "private_ip" {
@@ -15,5 +15,5 @@ output "private_ip" {
 
 output "ssh_command" {
   description = "SSH command for operators."
-  value       = "ssh root@${huaweicloud_vpc_eip.bastion.address}"
+  value       = var.eip_enabled ? "ssh root@${huaweicloud_vpc_eip.bastion[0].address}" : "sealed: no public IP, reach the bastion from inside the VPC"
 }

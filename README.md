@@ -84,6 +84,8 @@ survive a pod or AZ failure.
 
 Paste-ready prompts for each phase live in [`docs/prompts.md`](docs/prompts.md).
 
+Once all three phases pass, **seal the stack**: `CONFIRM=yes ./scripts/deploy.sh seal` deletes the bastion EIP, leaving no public entry point anywhere in the VPC - the final state of this design. `unseal` re-opens it for maintenance with a new address.
+
 Models are a separate phase because they change most often and `terraform apply`
 should not run to add one. Phase 2 deploys a gateway that works with no upstream
 at all, which is what makes an empty `/v1/models` an honest signal about the

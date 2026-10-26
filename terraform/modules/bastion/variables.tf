@@ -149,3 +149,9 @@ variable "ssh_public_key" {
   type        = string
   default     = ""
 }
+
+variable "eip_enabled" {
+  description = "Attach a public EIP to the bastion. Set false to seal the stack after deployment."
+  type        = bool
+  default     = true
+}

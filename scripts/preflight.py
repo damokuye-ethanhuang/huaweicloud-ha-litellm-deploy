@@ -570,6 +570,9 @@ def render_tfvars(v: dict[str, Any]) -> str:
         "enable_nat_gateway": v.get("enable_nat_gateway"),
         "nat_eip_bandwidth_size": v.get("nat_bandwidth_mbit") or 100,
         "bastion_enabled": v.get("bastion_enabled", True),
+        # seal/unseal is the only thing that flips this; rendering it keeps
+        # deploy-inputs.yaml the single source of truth.
+        "bastion_eip_enabled": v.get("bastion_eip_enabled", True),
         "bastion_ssh_cidrs": v.get("bastion_ssh_cidrs") or [],
         "bastion_flavor": v.get("bastion_flavor") or "c7.large.2",
         "bastion_public_key": v.get("bastion_public_key") or "",

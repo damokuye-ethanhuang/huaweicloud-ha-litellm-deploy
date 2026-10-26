@@ -13,6 +13,8 @@
 #   ./scripts/deploy.sh models --check  # phase 3: diff models.yaml against what is applied
 #   ./scripts/deploy.sh models --apply  # phase 3: render models + fallbacks, roll the pods
 #   ./scripts/deploy.sh models --rollback   # re-apply the previous snapshot
+#   CONFIRM=yes ./scripts/deploy.sh seal    # remove the bastion EIP: no public IP left
+#   CONFIRM=yes ./scripts/deploy.sh unseal  # re-create it for maintenance (new address)
 #   ./scripts/deploy.sh all             # everything, apply included
 #
 # Remote execution (laptop outside the VPC: the cluster API and the ELB VIP are
@@ -242,6 +244,51 @@ run_ingress() {
   "$REPO/scripts/ingress-apply.sh"
 }
 
+run_seal() {
+  # The reference design ends with nothing in the VPC reachable from the
+  # internet. Only the bastion ever had a public IP, so sealing is one switch:
+  # bastion_eip_enabled. It is written into deploy-inputs.yaml rather than passed
+  # as -var, so the next plain apply cannot silently re-create the EIP.
+  #
+  # Terraform only knows the EIP it created, so an EIP belonging to something
+  # else in the account is never touched.
+  local target="$1" label="seal"
+  [ "$target" = "true" ] && label="unseal"
+  require terraform python3
+
+  if ! python3 -c 'import sys,yaml
+d=yaml.safe_load(open(sys.argv[1]))
+v=[i.get("value") for s in d.values() if isinstance(s,list) for i in s
+   if isinstance(i,dict) and i.get("key")=="bastion_enabled"]
+sys.exit(0 if v and v[0] else 1)' "$REPO/deploy-inputs.yaml"; then
+    die "bastion_enabled is false: there is no bastion EIP to $label"
+  fi
+
+  python3 "$REPO/scripts/set-input.py" bastion_eip_enabled "$target"
+  run_preflight
+  log "terraform plan ($label: only the bastion EIP and its association change)"
+  terraform -chdir="$TF_DIR" plan -input=false -out=tfplan
+
+  if [ "${CONFIRM:-}" != "yes" ]; then
+    warn "review the plan above, then re-run: CONFIRM=yes ./scripts/deploy.sh $label"
+    return 0
+  fi
+
+  terraform -chdir="$TF_DIR" apply -input=false tfplan
+  rm -f "$TF_DIR/tfplan"
+
+  if [ "$target" = "false" ]; then
+    local ip
+    ip="$(terraform_output "$TF_DIR" bastion_public_ip 2>/dev/null || true)"
+    [ -z "$ip" ] || die "seal failed: bastion_public_ip is still $ip"
+    terraform -chdir="$TF_DIR" state list | grep -q 'huaweicloud_vpc_eip' && die "seal failed: an EIP is still in state"
+    ok "sealed: no public IP left in this stack; the bastion answers only from inside the VPC"
+    log "re-open for maintenance: CONFIRM=yes ./scripts/deploy.sh unseal (the address will change)"
+  else
+    ok "unsealed: bastion public IP $(terraform_output "$TF_DIR" bastion_public_ip 2>/dev/null || echo '<pending>')"
+  fi
+}
+
 run_models() {
   # Phase 3. Models and fallbacks live in models.yaml; nothing here touches
   # Terraform, and phase 2 never reads this file.
@@ -324,6 +371,8 @@ if [ "$REMOTE" = "1" ]; then
   # In-cluster stages cannot run here: hand the whole bundle to the bastion.
   case "$STAGE" in
     models) run_models ;;
+  seal) run_seal false ;;
+  unseal) run_seal true ;;
     deploy-app | verify | all) exec "$REPO/scripts/remote-deploy.sh" "$STAGE" ;;
     *) die "--remote only applies to deploy-app, verify and all (got '$STAGE')" ;;
   esac
@@ -347,6 +396,6 @@ case "$STAGE" in
     run_verify
     ;;
   *)
-    die "unknown stage '$STAGE' (preflight|plan|apply-infra|apply-stream|deploy-app|verify|ingress|verify-ui|bastion-key|models|all)"
+    die "unknown stage '$STAGE' (preflight|plan|apply-infra|apply-stream|deploy-app|verify|ingress|verify-ui|bastion-key|models|seal|unseal|all)"
     ;;
 esac
