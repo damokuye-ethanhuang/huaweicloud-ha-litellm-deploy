@@ -5,6 +5,7 @@
 #   ./scripts/deploy.sh preflight
 #   ./scripts/deploy.sh plan
 #   ./scripts/deploy.sh apply-infra
+#   ./scripts/deploy.sh apply-stream      # same apply, live per-resource progress
 #   ./scripts/deploy.sh deploy-app
 #   ./scripts/deploy.sh verify
 #   ./scripts/deploy.sh ingress         # converge the CCE ELB Ingress (immutable annotations)
@@ -104,6 +105,18 @@ run_apply() {
   [ -f "$TF_DIR/tfplan" ] || die "no saved plan; run './scripts/deploy.sh plan' first (never apply without reviewing a plan)"
   log "terraform apply"
   terraform -chdir="$TF_DIR" apply -input=false tfplan
+  rm -f "$TF_DIR/tfplan"
+  ok "infrastructure ready"
+}
+
+run_apply_stream() {
+  require terraform python3
+  [ -f "$TF_DIR/tfplan" ] || die "no saved plan; run './scripts/deploy.sh plan' first (never apply without reviewing a plan)"
+  log "terraform apply (streaming: per-resource start/progress/complete)"
+  python3 "$REPO/scripts/apply-stream.py" \
+    --dir "$TF_DIR" \
+    --plan tfplan \
+    --json-log "$OUT_DIR/apply-timeline.jsonl"
   rm -f "$TF_DIR/tfplan"
   ok "infrastructure ready"
 }
@@ -267,6 +280,7 @@ case "$STAGE" in
   preflight) run_preflight ;;
   plan) run_plan ;;
   apply-infra) run_apply ;;
+  apply-stream) run_apply_stream ;;
   deploy-app) run_app ;;
   verify) run_verify ;;
   bastion-key) run_bastion_key ;;
@@ -279,6 +293,6 @@ case "$STAGE" in
     run_verify
     ;;
   *)
-    die "unknown stage '$STAGE' (preflight|plan|apply-infra|deploy-app|verify|ingress|verify-ui|bastion-key|all)"
+    die "unknown stage '$STAGE' (preflight|plan|apply-infra|apply-stream|deploy-app|verify|ingress|verify-ui|bastion-key|all)"
     ;;
 esac

@@ -38,6 +38,7 @@ gateway** — the CCE API has no public endpoint and the ELB is internal.
 | `preflight` | your machine | renders artifacts only, offline |
 | `plan` | your machine | cloud API only |
 | `apply-infra` | your machine | cloud API only; 20–40 min |
+| `apply-stream` | your machine | same apply, live per-resource progress from `apply -json` |
 | `deploy-app` | **bastion** | needs cluster API + helm |
 | `verify` | **bastion** | the ELB VIP is routable from inside the VPC only, and it only exists after the Ingress reconciles |
 | `ingress` | your machine (drives the bastion) | converges the immutable `elb.autocreate` annotation, then proves the VIP serves |
@@ -137,6 +138,7 @@ Column order: `name | api_base | api_key | model`. Rules:
 ./scripts/deploy.sh plan           # save tfplan, change nothing
 #   ◄── MANDATORY: a human reads the plan before apply
 ./scripts/deploy.sh apply-infra    # 20–40 min
+./scripts/deploy.sh apply-stream   # same saved plan, live progress + out/apply-timeline.jsonl
 ./scripts/deploy.sh --remote deploy-app   # helm on the bastion
 ./scripts/deploy.sh --remote verify       # smoke on the bastion
 ./scripts/deploy.sh ingress              # converge Ingress (idempotent), prove VIP

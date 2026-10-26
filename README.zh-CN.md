@@ -67,6 +67,7 @@ $EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 ./scripts/deploy.sh plan        # 生成 plan，不做任何变更
 #   ◄── 人工看完 plan 再继续
 ./scripts/deploy.sh apply-infra # 20–40 分钟，主要是 CCE
+#   或：./scripts/deploy.sh apply-stream（同一份 plan，逐资源实时进度）
 ./scripts/deploy.sh --remote deploy-app   # 在堡垒机上跑 helm
 ./scripts/deploy.sh --remote verify       # 在堡垒机上做 smoke
 ./scripts/deploy.sh ingress              # 一次性收敛 CCE ELB Ingress（幂等）

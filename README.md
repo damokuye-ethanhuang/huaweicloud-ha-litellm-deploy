@@ -83,6 +83,7 @@ $EDITOR deploy-inputs.yaml      # the only other file you edit
 ./scripts/deploy.sh plan        # save a plan; changes nothing
 #   ◄── read the plan before applying
 ./scripts/deploy.sh apply-infra # 20–40 min, mostly CCE
+#   or: ./scripts/deploy.sh apply-stream  (same plan, live per-resource progress)
 ./scripts/deploy.sh --remote deploy-app   # helm, executed on the bastion
 ./scripts/deploy.sh --remote verify       # smoke test, executed on the bastion
 ./scripts/deploy.sh ingress              # converge the CCE ELB Ingress (idempotent)

@@ -64,6 +64,7 @@ script, a Terraform module or a document is missing from it.
 |---|---|
 | `scripts/deploy.sh` | Entry point. Stages: `preflight`, `plan`, `apply-infra`, `deploy-app`, `verify`, `bastion-key`, `ingress`, `verify-ui`, `all`; `--remote` runs the in-cluster stages over the bastion. |
 | `scripts/preflight.py` | Validates `deploy-inputs.yaml` (CIDRs, TLS, region, models, version gate) and **renders** `out/` — tfvars, Helm values, bundle. The only place inputs become artifacts. |
+| `scripts/apply-stream.py` | Renders `terraform apply -json` as live per-resource progress (start, 10 s `apply_progress`, elapsed, errors), archives `out/apply-timeline.jsonl`, prints the slowest resources. Same plan gate as `apply-infra`. |
 | `scripts/apply-staged.sh` | Applies in dependency order (edge → data → compute → cache → ops) so the slow/risky pieces fail early and metered resources come last. |
 | `scripts/remote-deploy.sh` | Bundles values + chart + Secret + kubeconfig, uploads to the bastion, runs helm there. Subcommands: `deploy`, `verify`, `exec`, `put`. |
 | `scripts/render-helm-values.py` | Merges `out/helm-values.yaml` with runtime ELB/image settings. The only place that knows how `elb_mode` maps to Ingress annotations. |

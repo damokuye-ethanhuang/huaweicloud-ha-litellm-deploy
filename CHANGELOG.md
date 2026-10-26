@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `scripts/apply-stream.py` + `./scripts/deploy.sh apply-stream`: renders
+  Terraform's machine-readable stream (`apply_start` / `apply_progress` every
+  ~10 s / `apply_complete` with elapsed) as live per-resource progress, archives
+  the timeline to `out/apply-timeline.jsonl`, and prints the slowest resources.
+  Same saved-plan gate as `apply-infra`; `--replay` re-renders a past run and
+  `--heartbeat` distinguishes slow from wedged.
 - `docs/index.md` - the authoritative file map: what every script, module and
   document is for, and which document answers which question. Pointed at from
   both READMEs and from the agent skill.

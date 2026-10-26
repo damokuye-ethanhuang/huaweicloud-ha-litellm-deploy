@@ -43,7 +43,10 @@ plan: ## Save a Terraform plan for review (changes nothing)
 	./scripts/deploy.sh plan
 
 apply-infra: ## Apply the saved plan (review it first)
-	./scripts/deploy.sh apply-infra
+	@./scripts/deploy.sh apply-infra
+
+apply-stream: ## Apply with live per-resource progress (same plan gate)
+	./scripts/deploy.sh apply-stream
 
 deploy-app: ## Secret + helm upgrade (needs cluster access; use remote-deploy outside the VPC)
 	./scripts/deploy.sh deploy-app

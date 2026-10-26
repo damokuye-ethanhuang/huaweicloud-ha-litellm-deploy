@@ -44,7 +44,7 @@ fill deploy-inputs.yaml
 Single entry point:
 
 ```bash
-./scripts/deploy.sh <stage>              # preflight | plan | apply-infra | deploy-app | verify | all
+./scripts/deploy.sh <stage>              # preflight | plan | apply-infra | apply-stream | deploy-app | verify | all
 ./scripts/deploy.sh --remote <stage>     # run an in-cluster stage on the bastion
 ```
 
@@ -262,6 +262,40 @@ than applying.
 
 20–40 minutes; CCE node provisioning dominates. Safe to re-run after a partial
 failure.
+
+### Watching it without polling
+
+`apply-infra` prints a line when a resource starts and another when it ends, so a
+CCE cluster or an RDS instance is many minutes of silence. Terraform already
+emits a stable event stream (`-json`, UI 1.0, `apply_progress` every ~10 s);
+`apply-stream` renders it and keeps the same plan gate:
+
+```bash
+./scripts/deploy.sh plan
+./scripts/deploy.sh apply-stream     # applies the same saved plan, with progress
+```
+
+```
+12:03:02 apply tfplan
+12:03:02 plan: 31 create
+12:03:03 + create  huaweicloud_cce_cluster.this
+12:03:13 · huaweicloud_cce_cluster.this Still creating... [10s elapsed]
+12:18:44 ✓ huaweicloud_cce_cluster.this 15m41s id=...
+12:19:02 apply complete 31 added, 0 changed, 0 destroyed in 16m00s
+```
+
+- every event is archived to `out/apply-timeline.jsonl`; the run ends with the
+  five slowest resources, so a slow stage can be analysed afterwards instead of
+  by re-running it;
+- `--heartbeat` (30 s) re-prints in-flight resources when a provider goes quiet,
+  which distinguishes "slow" from "wedged";
+- `--replay out/apply-timeline.jsonl` renders a past run for a ticket;
+- output values are counted, never printed.
+
+This stays in the CLI on purpose. Terrakube, Atlantis and tf-controller are good
+projects, but each brings a server, its own state/workspace model and a Git
+workflow; this repository already gets those from Terraform plus the bastion, and
+the constraint here is a private network with no public endpoint to add one to.
 
 ### Creation order (use the staged script)
 

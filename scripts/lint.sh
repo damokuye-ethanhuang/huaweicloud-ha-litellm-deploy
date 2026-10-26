@@ -30,6 +30,12 @@ for dir in terraform/modules/* terraform/examples/*; do
   fi
 done
 
+step "python syntax"
+for f in scripts/*.py; do
+  printf '  %-40s' "$f"
+  if python3 -m py_compile "$f"; then echo ok; else fail=1; fi
+done
+
 step "helm lint"
 helm lint charts/litellm --set existingSecret=ci-secret || fail=1
 
