@@ -245,7 +245,7 @@ PUT https://elb.<region>.myhuaweicloud.com/v3/<project>/elb/loadbalancers/<lb-id
    （集群里有 Pod 时数据层删不掉）
 3. 关闭 ELB 删除保护（见第 18 条）
 4. `terraform destroy` 全量（VPC/子网/ELB/RDS/DCS/KMS/CSMS）
-5. 清理本地敏感产物：`out/bastion/app.env`、`.local/bastion_key`、`.local/.bpass`
+5. 清理本地敏感产物：`$LITELLM_DEPLOY_HOME/out/bastion/app.env`、`$LITELLM_DEPLOY_HOME/state/bastion_key`、`.local/.bpass`
 6. `./scripts/creds.sh clear` → `./scripts/handoff.py scrub` → `check` 必须输出 `clean`
 7. **SWR 里的镜像不会随 Terraform 销毁**：`swr.<region>/<org>/litellm:<tag>`
    会继续占存储，需要另行删除组织或镜像。

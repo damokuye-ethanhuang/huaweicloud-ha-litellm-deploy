@@ -75,11 +75,11 @@ survive a pod or AZ failure.
 ### Production tier (CCE, HA) — the supported path
 
 ```bash
-./scripts/creds.sh set          # AK/SK of a dedicated IAM user → secrets/hw.env (gitignored)
+./scripts/creds.sh set          # AK/SK of a dedicated IAM user → $LITELLM_DEPLOY_HOME/secrets/hw.env (gitignored)
 
 $EDITOR deploy-inputs.yaml      # the only other file you edit
 
-./scripts/deploy.sh preflight   # validate + render out/
+./scripts/deploy.sh preflight   # validate + render into $LITELLM_DEPLOY_HOME/out/
 ./scripts/deploy.sh plan        # save a plan; changes nothing
 #   ◄── read the plan before applying
 ./scripts/deploy.sh apply-infra # 20–40 min, mostly CCE
@@ -112,11 +112,11 @@ and screenshots it with headless Chrome, so "it is deployed" is backed by an
 artifact rather than a pod count.
 
 Model endpoints and their keys are declared in `deploy-inputs.yaml`
-(`models[]`); the keys themselves live in `secrets/app.env` (gitignored) and are
+(`models[]`); the keys themselves live in `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored) and are
 referenced by `api_key_env`. A simple example:
 
 ```bash
-cat > secrets/app.env <<'EOF'
+cat > $LITELLM_DEPLOY_HOME/secrets/app.env <<'EOF'
 GLM_API_KEY=sk-...
 DEEPSEEK_API_KEY=
 EOF
@@ -124,6 +124,61 @@ EOF
 
 Empty means "this endpoint does not authenticate". Never put a key in
 `deploy-inputs.yaml`.
+
+### Two things to change: the input list and a paste-ready prompt
+
+**Runtime state lives outside the repository.** Nothing sensitive is written into
+the checkout:
+
+```
+~/.litellm-deploy/           # default; override with LITELLM_DEPLOY_HOME
+  secrets/hw.env             # AK/SK, written by creds.sh set (0600)
+  secrets/app.env            # model provider keys
+  out/                       # helm-values, preflight.json, apply-timeline.jsonl, evidence
+  state/                     # bastion private key, saved plans, handoff backups
+```
+
+A `zip -r`, a stray `git add -f`, or handing the folder to someone else therefore
+carries no credentials. The repository holds code and `.example` templates only.
+
+**Required inputs** (everything else has a default; full list in `docs/inputs-guide.md`):
+
+| Input | Where | Notes |
+|---|---|---|
+| `project_name` | `deploy-inputs.yaml` | prefix for every resource name, 3-24 lowercase |
+| `region` | `deploy-inputs.yaml` | e.g. `cn-southwest-2` |
+| `owner` | `deploy-inputs.yaml` | goes into resource tags |
+| `bastion_ssh_cidrs` | `deploy-inputs.yaml` | public egress IPs allowed to SSH the bastion (the only place public ranges are accepted) |
+| `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | VPC-internal ranges allowed to reach the gateway |
+| `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`; omit `api_base` for the ModelArts VPCEP path |
+| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | written interactively by `./scripts/creds.sh set` |
+| model keys | `secrets/app.env` | variable names must match each model's `api_key_env` |
+
+**Prompt to hand an agent** (edit the parameters, paste as-is):
+
+```text
+Deploy LiteLLM to Huawei Cloud from the repository huaweicloud-ha-litellm-deploy,
+following the preflight -> plan -> human review -> apply-infra -> deploy-app ->
+verify loop in AGENTS.md.
+
+My parameters:
+  project_name=acme-litellm
+  region=cn-southwest-2
+  owner=platform-team
+  bastion_ssh_cidrs=["<my public egress IP>/32"]
+  client_cidrs=["10.0.0.0/24"]  admin_cidrs=["10.0.0.0/24"]
+  models: glm-5.3 -> openai/glm-5.3, api_base omitted (ModelArts VPCEP)
+
+Rules:
+1. Never ask me for AK/SK: I have exported them in my shell. Never write them to
+   a file or a log.
+2. Run preflight first and ask all FAIL items at once; then stop after plan and
+   show me the summary.
+3. Only after I confirm, run apply-infra, reporting progress with apply-stream.
+4. On any failure, stop and report the stage and the raw error. Do not bypass a
+   check, and do not "fix" anything with a public EIP or a NAT gateway.
+5. Finish with handoff.py scrub && check; it must print clean.
+```
 
 ### Lab tier (single VM, ~10 minutes) — evaluation only
 
@@ -180,7 +235,7 @@ Upgrade policy and rollback are in [docs/operations.md](docs/operations.md).
 ## Security model
 
 - **No static credentials in the repository or in tfvars.** AK/SK live in
-  `secrets/hw.env` (gitignored, `chmod 600`, written by `creds.sh`) or in the
+  `$LITELLM_DEPLOY_HOME/secrets/hw.env` (gitignored, `chmod 600`, written by `creds.sh`) or in the
   environment; `handoff.py check` fails while any of them are still present.
 - **Every password is generated** by `random_password` per deployment: 24
   characters for database/Redis, 48 for the master and salt keys. Nothing is
@@ -189,7 +244,7 @@ Upgrade policy and rollback are in [docs/operations.md](docs/operations.md).
   credentials at rest; replacing it makes them unreadable.
 - **TLS is terminated at the ELB.** `enable_https = false` exists only for the
   lab tier and emits a warning.
-- **Provider keys live in a Kubernetes Secret**, created from `secrets/app.env`
+- **Provider keys live in a Kubernetes Secret**, created from `$LITELLM_DEPLOY_HOME/secrets/app.env`
   (gitignored) or directly with `kubectl`. They never enter Helm values.
 - **Data plane is VPC-only**: RDS and DCS accept 5432/6379 from the VPC CIDR
   only; neither gets a public IP.

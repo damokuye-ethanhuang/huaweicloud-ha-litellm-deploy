@@ -18,6 +18,9 @@ plan.out
 tfplan*
 
 # --- Secrets / local config (never commit) ---
+# Runtime state is written to $LITELLM_DEPLOY_HOME (~/.litellm-deploy) by
+# default; these rules are the second line of defence for anyone who overrides
+# it back into the checkout.
 *.tfvars
 !*.tfvars.example
 *.auto.tfvars

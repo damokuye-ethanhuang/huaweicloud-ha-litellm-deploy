@@ -217,7 +217,7 @@ Grafana 里编排。管理口令存 CSMS 的 `{项目名}-grafana-admin`。
    （形如 `postgresql://root:<密码>@<RDS内网地址>:5432/litellm?schema=public`）、
    `REDIS_PASSWORD`，再加上模型密钥（如 `GLM_API_KEY`，与 `api_key_env` 同名）。
 2. 创建 ConfigMap `litellm-config`，`config.yaml` 内容按
-   `out/models.rendered.yaml`（模型列表）+ 下面的静态段拼成**一个 YAML 文档**：
+   `$LITELLM_DEPLOY_HOME/out/models.rendered.yaml`（模型列表）+ 下面的静态段拼成**一个 YAML 文档**：
 
 ```yaml
 model_list:

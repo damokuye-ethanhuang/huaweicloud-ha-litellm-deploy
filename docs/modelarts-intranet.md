@@ -76,7 +76,7 @@ ModelArts → 授权.
 
 ## Wiring it into LiteLLM
 
-Add the access address and key to `secrets/app.env`, using the variable names
+Add the access address and key to `$LITELLM_DEPLOY_HOME/secrets/app.env`, using the variable names
 your `deploy-inputs.yaml` entries reference in `api_key_env`:
 
 ```bash

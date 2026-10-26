@@ -2,7 +2,6 @@ SHELL := /usr/bin/env bash
 TF_DIR ?= terraform/examples/cce-ha
 VERSION ?= 1.106.3
 NAMESPACE ?= litellm
-OUT_DIR ?= out
 
 .DEFAULT_GOAL := help
 

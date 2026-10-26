@@ -14,7 +14,8 @@ Design rules:
   * it never replaces Terraform — it execs `terraform apply -json <plan>` and
     passes the exit code through, so the plan-review gate still holds;
   * a saved plan is mandatory: no plan, no apply (AGENTS.md, golden rule 3);
-  * every event is archived as JSONL (`out/apply-timeline.jsonl` by default) so
+  * every event is archived as JSONL (`$LITELLM_DEPLOY_HOME/out/apply-timeline.jsonl`
+    by default, outside the repository) so
     a slow stage can be analysed after the fact instead of by re-running it;
   * output values are counted, never printed — they are frequently sensitive;
   * if the provider goes quiet for `--heartbeat` seconds, the in-flight
@@ -22,9 +23,9 @@ Design rules:
     whether the process died.
 
 Usage:
-    ./scripts/apply-stream.py --dir terraform/examples/cce-ha --plan out/tfplan
+    ./scripts/apply-stream.py --dir terraform/examples/cce-ha --plan tfplan
     ./scripts/apply-stream.py --dir ... --plan ... --plain       # CI logs
-    ./scripts/apply-stream.py --replay out/apply-timeline.jsonl  # replay a run
+    ./scripts/apply-stream.py --replay ~/.litellm-deploy/out/apply-timeline.jsonl
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 SYMBOL = {
     "create": "+",
@@ -356,7 +358,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Live per-resource progress for terraform apply.")
     parser.add_argument("--dir", default=".", help="Terraform working directory")
     parser.add_argument("--plan", help="Saved plan file (required unless --replay)")
-    parser.add_argument("--json-log", default="out/apply-timeline.jsonl", help="Where to archive the event stream")
+    parser.add_argument(
+        "--json-log",
+        default=str(Path(os.environ.get("OUT_DIR") or Path.home() / ".litellm-deploy" / "out") / "apply-timeline.jsonl"),
+        help="Where to archive the event stream (defaults outside the repository)",
+    )
     parser.add_argument("--heartbeat", type=float, default=30.0, help="Seconds of silence before re-printing in-flight resources")
     parser.add_argument("--plain", action="store_true", help="No ANSI colour (CI logs)")
     parser.add_argument("--replay", help="Render an existing JSONL timeline instead of running Terraform")

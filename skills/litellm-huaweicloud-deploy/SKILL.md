@@ -126,7 +126,7 @@ Column order: `name | api_base | api_key | model`. Rules:
 
 - `api_key` empty → the endpoint does not authenticate; still set `api_key_env`
   and leave the variable unset. Never write a key into `deploy-inputs.yaml`.
-- Keys go to `secrets/app.env` (gitignored) as `KEY=VALUE`, referenced by
+- Keys go to `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored) as `KEY=VALUE`, referenced by
   `api_key_env`.
 - Preserve existing entries; append, never replace.
 - All entries fall back to each other (`fallbacks.enabled: true`).
@@ -138,7 +138,7 @@ Column order: `name | api_base | api_key | model`. Rules:
 ./scripts/deploy.sh plan           # save tfplan, change nothing
 #   ◄── MANDATORY: a human reads the plan before apply
 ./scripts/deploy.sh apply-infra    # 20–40 min
-./scripts/deploy.sh apply-stream   # same saved plan, live progress + out/apply-timeline.jsonl
+./scripts/deploy.sh apply-stream   # same saved plan, live progress + $LITELLM_DEPLOY_HOME/out/apply-timeline.jsonl
 ./scripts/deploy.sh --remote deploy-app   # helm on the bastion
 ./scripts/deploy.sh --remote verify       # smoke on the bastion
 ./scripts/deploy.sh ingress              # converge Ingress (idempotent), prove VIP
@@ -176,14 +176,14 @@ Pod counts are not evidence that the gateway works: the UI is a Next.js SPA, so
 an HTML fetch alone proves nothing either. `./scripts/deploy.sh verify-ui`
 fetches `/ui/` through the bastion, opens an ssh tunnel, renders the page with
 headless Chrome, and calls readiness plus `/v1/models` with the master key. It
-writes `out/verification/litellm-ui.{html,png}` (gitignored).
+writes `$LITELLM_DEPLOY_HOME/out/verification/litellm-ui.{html,png}` (gitignored).
 
 ### What `deploy-app` does
 
 1. kubeconfig → bundled (0600);
 2. namespace + `litellm-secrets` from Terraform outputs merged with
-   `secrets/app.env`;
-3. merges `out/helm-values.yaml` (models, fallbacks, resources) with runtime ELB
+   `$LITELLM_DEPLOY_HOME/secrets/app.env`;
+3. merges `$LITELLM_DEPLOY_HOME/out/helm-values.yaml` (models, fallbacks, resources) with runtime ELB
    config and image via `scripts/render-helm-values.py` — the only place that
    knows how `elb_mode` maps to annotations;
 4. `helm upgrade --install --wait`; the migration Job runs as a pre-install /

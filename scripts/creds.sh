@@ -17,7 +17,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ROOT="$(repo_root)"
-ENV_FILE="$ROOT/secrets/hw.env"
+ENV_FILE="$SECRETS_DIR/hw.env"
 TEMPLATE="$ROOT/secrets/hw.env.example"
 
 usage() {

@@ -56,8 +56,8 @@
 
 | 什么东西 | 放哪里 | 谁来填 |
 |---|---|---|
-| 华为云 AK/SK | `secrets/hw.env`（`./scripts/creds.sh set`，gitignore） | 部署方或客户 |
-| 模型 API key | `secrets/app.env`，变量名与 `api_key_env` 一致 | 部署方或客户 |
+| 华为云 AK/SK | `$LITELLM_DEPLOY_HOME/secrets/hw.env`（`./scripts/creds.sh set`，gitignore） | 部署方或客户 |
+| 模型 API key | `$LITELLM_DEPLOY_HOME/secrets/app.env`，变量名与 `api_key_env` 一致 | 部署方或客户 |
 | 其余参数 | `deploy-inputs.yaml` | 部署方或客户 |
 
 把 `./scripts/handoff.py form` 的输出直接发给客户，上面写清了每一项该填到哪；测试
@@ -75,7 +75,7 @@ deepseek-v4.1-flash | https://<modelarts-vpce-ip>/v1/ | | openai/deepseek-v4.1-f
 
 转换规则：
 
-- 第 3 列 KEY **不写进** `deploy-inputs.yaml`，而是写进 `secrets/app.env`
+- 第 3 列 KEY **不写进** `deploy-inputs.yaml`，而是写进 `$LITELLM_DEPLOY_HOME/secrets/app.env`
   （已 gitignore），YAML 里只留 `api_key_env` 的变量名；
 - 第 3 列为空表示该端点免认证，变量留空即可；
 - 已有条目只追加不替换；
@@ -100,7 +100,7 @@ models:
 必填只有 `name`、`model`、`mode`；`api_base` 留空表示走 VPCEP 私网地址。
 没有 `provider` 字段——所有模型都按 OpenAI 兼容协议调用。
 
-密钥**不写在这个文件里**，放在 `secrets/app.env`（已 gitignore），部署时合并进
+密钥**不写在这个文件里**，放在 `$LITELLM_DEPLOY_HOME/secrets/app.env`（已 gitignore），部署时合并进
 Kubernetes Secret。
 
 ## 渲染产物
@@ -110,10 +110,10 @@ preflight 通过后生成：
 | 文件 | 用途 |
 |---|---|
 | `terraform/examples/cce-ha/terraform.tfvars` | Terraform 输入，**不要手改** |
-| `out/helm-values.yaml` | Helm values（含模型列表，不含密钥） |
-| `out/models.rendered.yaml` | 单看模型列表，便于 review |
-| `out/deployment-plan.md` | 人读的部署计划（命名、网段、模型、容量） |
-| `out/preflight.json` | agent 判读用的结构化结果 |
+| `$LITELLM_DEPLOY_HOME/out/helm-values.yaml` | Helm values（含模型列表，不含密钥） |
+| `$LITELLM_DEPLOY_HOME/out/models.rendered.yaml` | 单看模型列表，便于 review |
+| `$LITELLM_DEPLOY_HOME/out/deployment-plan.md` | 人读的部署计划（命名、网段、模型、容量） |
+| `$LITELLM_DEPLOY_HOME/out/preflight.json` | agent 判读用的结构化结果 |
 
 改了任何参数，重跑 preflight 即可，下游不需要再改。
 

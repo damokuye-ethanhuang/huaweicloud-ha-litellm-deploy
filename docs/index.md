@@ -65,10 +65,10 @@ script, a Terraform module or a document is missing from it.
 | `scripts/deploy.sh` | Entry point. Stages: `preflight`, `plan`, `apply-infra`, `deploy-app`, `verify`, `bastion-key`, `ingress`, `verify-ui`, `all`; `--remote` runs the in-cluster stages over the bastion. |
 | `scripts/preflight.py` | Validates `deploy-inputs.yaml` (CIDRs, TLS, region, models, version gate) and **renders** `out/` — tfvars, Helm values, bundle. The only place inputs become artifacts. |
 | `scripts/audit-secrets.py` | Pre-publication audit: forbidden paths (plans, state, keys, kubeconfigs), credential/PII patterns in the tree, and every blob in git history. Masked output; `make audit`. |
-| `scripts/apply-stream.py` | Renders `terraform apply -json` as live per-resource progress (start, 10 s `apply_progress`, elapsed, errors), archives `out/apply-timeline.jsonl`, prints the slowest resources. Same plan gate as `apply-infra`. |
+| `scripts/apply-stream.py` | Renders `terraform apply -json` as live per-resource progress (start, 10 s `apply_progress`, elapsed, errors), archives `$LITELLM_DEPLOY_HOME/out/apply-timeline.jsonl`, prints the slowest resources. Same plan gate as `apply-infra`. |
 | `scripts/apply-staged.sh` | Applies in dependency order (edge → data → compute → cache → ops) so the slow/risky pieces fail early and metered resources come last. |
 | `scripts/remote-deploy.sh` | Bundles values + chart + Secret + kubeconfig, uploads to the bastion, runs helm there. Subcommands: `deploy`, `verify`, `exec`, `put`. |
-| `scripts/render-helm-values.py` | Merges `out/helm-values.yaml` with runtime ELB/image settings. The only place that knows how `elb_mode` maps to Ingress annotations. |
+| `scripts/render-helm-values.py` | Merges `$LITELLM_DEPLOY_HOME/out/helm-values.yaml` with runtime ELB/image settings. The only place that knows how `elb_mode` maps to Ingress annotations. |
 | `scripts/ingress-apply.sh` | Converges the CCE ELB Ingress: compares live vs rendered, deletes and recreates when the immutable `elb.autocreate` drifted, waits for the VIP, proves readiness. `--check` reports drift, exits 2. |
 | `scripts/verify-ui.sh` | Operator-view proof: `/ui/` HTML through the bastion, headless-Chrome screenshot, readiness and `/v1/models` with the master key. |
 | `scripts/smoke-test.sh` | Liveness, readiness, model list, optional chat completion against a reachable gateway. |
@@ -155,7 +155,7 @@ script, a Terraform module or a document is missing from it.
 | `monitoring/README.md` | How logs reach LTS, metrics reach AOM, and Grafana pulls AOM from inside the VPC. |
 | `monitoring/alerting-rules.yaml` | AOM alarm rules: availability, latency, error rate, saturation. |
 | `monitoring/grafana-dashboard.json` | Dashboard for AOM's Prometheus-compatible endpoint. |
-| `secrets/README.md` | What belongs in `secrets/app.env` and `secrets/hw.env`, and what must never be committed. |
+| `secrets/README.md` | What belongs in `$LITELLM_DEPLOY_HOME/secrets/app.env` and `$LITELLM_DEPLOY_HOME/secrets/hw.env`, and what must never be committed. |
 | `secrets/app.env.example` | Template for provider API keys (`api_key_env` names, never the keys themselves). |
 | `secrets/hw.env.example` | Template for AK/SK; filled by `scripts/creds.sh set`, never by hand-editing. |
 | `skills/litellm-huaweicloud-deploy/SKILL.md` | Agent skill: the same flow, the decisions behind it, and failure routing. Installed with `make skill-install`. |
@@ -167,11 +167,11 @@ script, a Terraform module or a document is missing from it.
 | Path | Produced by | Contents |
 |---|---|---|
 | `out/terraform.tfvars` | preflight | Module inputs derived from `deploy-inputs.yaml` |
-| `out/helm-values.yaml` | preflight | Models, fallbacks, resources, image |
+| `$LITELLM_DEPLOY_HOME/out/helm-values.yaml` | preflight | Models, fallbacks, resources, image |
 | `out/bundle.tar.gz` | `--remote` | Chart + values + Secret + kubeconfig for the bastion |
 | `out/tfplan` | `plan` | The saved plan `apply-infra` consumes |
-| `out/verification/` | `verify-ui` | `litellm-ui.html`, `litellm-ui.png` evidence |
-| `secrets/hw.env`, `secrets/app.env` | `creds.sh`, operator | Live credentials (0600, gitignored) |
+| `$LITELLM_DEPLOY_HOME/out/verification/` | `verify-ui` | `litellm-ui.html`, `litellm-ui.png` evidence |
+| `$LITELLM_DEPLOY_HOME/secrets/hw.env`, `$LITELLM_DEPLOY_HOME/secrets/app.env` | `creds.sh`, operator | Live credentials (0600, gitignored) |
 
 ## Keeping this page true
 

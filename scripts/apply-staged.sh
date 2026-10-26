@@ -29,7 +29,7 @@ source "$(dirname "$0")/lib.sh"
 
 readonly EXAMPLE_DIR="${EXAMPLE_DIR:-terraform/examples/cce-ha}"
 # Absolute: terraform -chdir resolves relative paths against the example dir.
-readonly PLAN_DIR="${PLAN_DIR:-$(repo_root)/.local/plans}"
+readonly PLAN_DIR="${PLAN_DIR:-$STATE_DIR/plans}"
 
 # Resource addresses per stage. Keep dependencies inside a stage, never across
 # two stages in the reverse direction: a stage must only reference things the

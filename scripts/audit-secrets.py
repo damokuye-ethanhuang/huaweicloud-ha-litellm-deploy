@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -289,6 +290,10 @@ def main() -> int:
                     continue
                 seen.add(key)
                 print(f"  {r['path']}:{r['line']}  [{r['rule']}]  {r['snippet']}")
+
+    runtime = Path(os.environ.get("LITELLM_DEPLOY_HOME") or Path.home() / ".litellm-deploy")
+    if runtime.is_dir():
+        print(f"\nruntime dir (expected, outside the repository): {runtime}")
 
     ignored = local_only()
     if ignored:

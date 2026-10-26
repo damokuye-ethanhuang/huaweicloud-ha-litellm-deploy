@@ -4,8 +4,8 @@
 A customer hands over three things: AK/SK, the addresses that may SSH in, and
 the model endpoints/keys. They land in two files, never in a chat or a commit:
 
-  secrets/hw.env      AK/SK            (./scripts/creds.sh set)
-  secrets/app.env     model API keys
+  $LITELLM_DEPLOY_HOME/secrets/hw.env    AK/SK         (./scripts/creds.sh set)
+  $LITELLM_DEPLOY_HOME/secrets/app.env   model API keys
   deploy-inputs.yaml  everything else, no secrets
 
 This script is the round trip around that:
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -31,11 +32,20 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def _runtime_home() -> Path:
+    """Runtime state lives outside the repository; see scripts/lib.sh."""
+    env = os.environ.get("LITELLM_DEPLOY_HOME")
+    return Path(env).expanduser() if env else Path.home() / ".litellm-deploy"
+
+
+RUNTIME_HOME = _runtime_home()
 INPUTS = REPO / "deploy-inputs.yaml"
-SECRETS = REPO / "secrets"
+SECRETS = Path(os.environ.get("SECRETS_DIR") or RUNTIME_HOME / "secrets")
 HW_ENV = SECRETS / "hw.env"
 APP_ENV = SECRETS / "app.env"
-BACKUPS = REPO / ".local"
+BACKUPS = Path(os.environ.get("STATE_DIR") or RUNTIME_HOME / "state")
 
 # Values that are obviously not a real customer: RFC 5737 documentation ranges
 # and the <angle-bracket> placeholders used throughout the docs.
@@ -93,12 +103,12 @@ def dirty_items() -> list[str]:
 
     ak = HW_ENV.is_file() and bool(env_values(HW_ENV).get("HW_ACCESS_KEY"))
     if ak:
-        problems.append(f"AK/SK still in {HW_ENV.relative_to(REPO)} (./scripts/creds.sh clear)")
+        problems.append(f"AK/SK still in {HW_ENV} (./scripts/creds.sh clear)")
 
     keys = env_values(APP_ENV)
     live = [k for k, v in keys.items() if v and not is_placeholder_host(v)]
     if live:
-        problems.append(f"model keys still in {APP_ENV.relative_to(REPO)}: {', '.join(sorted(live))}")
+        problems.append(f"model keys still in {APP_ENV}: {', '.join(sorted(live))}")
 
     _, flat = load_inputs()
     cidrs = flat.get("bastion_ssh_cidrs", {}).get("value") or []
@@ -123,8 +133,8 @@ def cmd_status() -> int:
     print(f"  bastion_ssh_cidrs   {', '.join(map(str, flat.get('bastion_ssh_cidrs', {}).get('value') or [])) or '(empty)'}")
     print(f"  client_cidrs        {', '.join(map(str, flat.get('client_cidrs', {}).get('value') or [])) or '(empty)'}")
     print(f"  admin_cidrs         {', '.join(map(str, flat.get('admin_cidrs', {}).get('value') or [])) or '(empty)'}")
-    print(f"  AK                  {mask(env_values(HW_ENV).get('HW_ACCESS_KEY', '')) if HW_ENV.is_file() else '(no secrets/hw.env)'}")
-    print(f"  model key vars      {', '.join(sorted(keys)) or '(none in secrets/app.env)'}")
+    print(f"  AK                  {mask(env_values(HW_ENV).get('HW_ACCESS_KEY', '')) if HW_ENV.is_file() else f'(no {HW_ENV})'}")
+    print(f"  model key vars      {', '.join(sorted(keys)) or f'(none in {APP_ENV})'}")
     print("\n  models:")
     for model in load_inputs()[0].get("models") or []:
         print(f"    {model.get('name'):<20} {model.get('api_base') or '(default endpoint)'}")
@@ -175,8 +185,8 @@ def cmd_scrub() -> int:
     HW_ENV.unlink(missing_ok=True)
     APP_ENV.unlink(missing_ok=True)
 
-    print(f"backup:  {backup.relative_to(REPO)}")
-    print("cleared: secrets/hw.env, secrets/app.env, customer fields in deploy-inputs.yaml")
+    print(f"backup:  {backup}")
+    print(f"cleared: {HW_ENV}, {APP_ENV}, customer fields in deploy-inputs.yaml")
     print("verify:  ./scripts/handoff.py check")
     return 0
 
@@ -187,7 +197,8 @@ def cmd_form() -> int:
 Send this to the customer. Nothing here is a secret yet; they fill it in.
 
 1) AK/SK  - never in chat, never in git
-   Put them in secrets/hw.env (or let them run ./scripts/creds.sh set):
+   Run ./scripts/creds.sh set (hidden input) - it writes
+   $LITELLM_DEPLOY_HOME/secrets/hw.env, outside this repository:
 
      HW_ACCESS_KEY=<access key id>
      HW_SECRET_KEY=<secret access key>

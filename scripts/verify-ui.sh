@@ -24,7 +24,7 @@ source "$(dirname "$0")/lib.sh"
 
 REPO="$(repo_root)"
 TF_DIR="$REPO/terraform/examples/cce-ha"
-OUT_DIR="$REPO/out/verification"
+VERIFY_DIR="$OUT_DIR/verification"
 UI_PATH="/ui/"
 SCREENSHOT=1
 
@@ -48,7 +48,7 @@ bastion_host() {
 
 main() {
   require terraform
-  mkdir -p "$OUT_DIR"
+  mkdir -p "$VERIFY_DIR"
 
   local vip host slug scheme cert
   vip="$(remote "kubectl -n litellm get ingress litellm -o jsonpath='{.status.loadBalancer.ingress[0].ip}'" 2>/dev/null || true)"

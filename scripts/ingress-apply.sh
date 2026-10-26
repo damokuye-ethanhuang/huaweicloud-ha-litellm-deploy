@@ -31,7 +31,7 @@ source "$(dirname "$0")/lib.sh"
 
 REPO="$(repo_root)"
 TF_DIR="$REPO/terraform/examples/cce-ha"
-BUNDLE_DIR="${BUNDLE_DIR:-$REPO/out/bastion}"
+BUNDLE_DIR="${BUNDLE_DIR:-$OUT_DIR/bastion}"
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
 

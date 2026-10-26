@@ -60,10 +60,10 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 ### 生产版（CCE 高可用）——受支持的路径
 
 ```bash
-./scripts/creds.sh set          # 专用 IAM 用户的 AK/SK → secrets/hw.env（已 gitignore）
+./scripts/creds.sh set          # 专用 IAM 用户的 AK/SK → $LITELLM_DEPLOY_HOME/secrets/hw.env（已 gitignore）
 $EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 
-./scripts/deploy.sh preflight   # 校验参数并渲染 out/
+./scripts/deploy.sh preflight   # 校验参数并渲染 $LITELLM_DEPLOY_HOME/out/
 ./scripts/deploy.sh plan        # 生成 plan，不做任何变更
 #   ◄── 人工看完 plan 再继续
 ./scripts/deploy.sh apply-infra # 20–40 分钟，主要是 CCE
@@ -91,16 +91,65 @@ $EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 `/ui/` 并用无头 Chrome 截图，让「已部署」有产物可查，而不是只看 Pod 数量。
 
 模型端点和 KEY 分开管理：端点写在 `deploy-inputs.yaml` 的 `models[]`，KEY 写在
-`secrets/app.env`（已 gitignore），YAML 里只用 `api_key_env` 引用变量名：
+`$LITELLM_DEPLOY_HOME/secrets/app.env`（已 gitignore），YAML 里只用 `api_key_env` 引用变量名：
 
 ```bash
-cat > secrets/app.env <<'EOF'
+cat > $LITELLM_DEPLOY_HOME/secrets/app.env <<'EOF'
 GLM_API_KEY=sk-...
 DEEPSEEK_API_KEY=
 EOF
 ```
 
 留空表示该端点免认证。**不要把 KEY 写进 `deploy-inputs.yaml`。**
+
+### 只改两处：变量清单 + 可直接粘贴的提示词
+
+**运行时目录在仓库外。** 生成物和凭据都不落进仓库：
+
+```
+~/.litellm-deploy/           # 默认值，可用 LITELLM_DEPLOY_HOME 覆盖
+  secrets/hw.env             # AK/SK（creds.sh set 写入，0600）
+  secrets/app.env            # 模型 provider KEY
+  out/                       # helm-values、preflight.json、apply-timeline.jsonl、验证产物
+  state/                     # 堡垒机私钥、分阶段 plan、handoff 备份
+```
+
+这样 `zip -r`、误 `git add -f`、或把目录共享给别人，都不会把密钥带出去；仓库里只有代码和 `.example` 模板。
+
+**必填清单**（其余变量都有默认值，全量见 `docs/inputs-guide.md`）：
+
+| 变量 | 在哪 | 说明 |
+|---|---|---|
+| `project_name` | `deploy-inputs.yaml` | 所有资源名的前缀，3–24 位小写 |
+| `region` | `deploy-inputs.yaml` | 例如 `cn-southwest-2` |
+| `owner` | `deploy-inputs.yaml` | 负责人，写进资源标签 |
+| `bastion_ssh_cidrs` | `deploy-inputs.yaml` | 允许 SSH 堡垒机的公网出口 IP（唯一接受公网段的地方） |
+| `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | 允许访问网关的 VPC 内私网段 |
+| `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`；`api_base` 省略即走 ModelArts VPCEP |
+| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入 |
+| 模型 KEY | `secrets/app.env` | 变量名与模型条目的 `api_key_env` 对应 |
+
+**给 agent 的提示词**（改掉参数就能直接粘贴）：
+
+```text
+在仓库 huaweicloud-ha-litellm-deploy 中部署 LiteLLM 到华为云，按 AGENTS.md 的
+preflight → plan → 人工确认 → apply-infra → deploy-app → verify 循环执行。
+
+我的参数：
+  project_name=acme-litellm
+  region=cn-southwest-2
+  owner=platform-team
+  bastion_ssh_cidrs=["<我的公网出口IP>/32"]
+  client_cidrs=["10.0.0.0/24"]  admin_cidrs=["10.0.0.0/24"]
+  模型：glm-5.3 → openai/glm-5.3，api_base 省略（走 ModelArts VPCEP）
+
+规则：
+1. 不要向我索要 AK/SK，我已经在 shell 里 export，也不要写进任何文件或日志。
+2. 先跑 preflight，把 FAIL 项一次问完；然后只跑到 plan，把摘要给我确认。
+3. 我说「确认」之后再 apply-infra，过程中用 apply-stream 汇报进度。
+4. 任何阶段失败就停下，报阶段名和原始错误；不要绕过检查，也不要用公网 EIP/NAT 绕问题。
+5. 收尾跑 handoff.py scrub && check，必须输出 clean。
+```
 
 ### 单机版（vm-single，约 10 分钟）——仅评估
 
@@ -135,7 +184,7 @@ terraform -chdir=terraform/examples/cce-ha output -json app_env | jq -r .LITELLM
 
 ## 安全模型
 
-- **仓库和 tfvars 里没有静态凭据**：AK/SK 放在 `secrets/hw.env`（已 gitignore、
+- **仓库和 tfvars 里没有静态凭据**：AK/SK 放在 `$LITELLM_DEPLOY_HOME/secrets/hw.env`（已 gitignore、
   `chmod 600`，由 `creds.sh` 写入）或环境变量里；`handoff.py check` 只要还留着就报错。
 - **所有密码每次部署随机生成**：数据库/Redis 24 位，主密钥/盐密钥 48 位。
 - **`LITELLM_SALT_KEY` 带 `prevent_destroy`**：它加密数据库里的 provider

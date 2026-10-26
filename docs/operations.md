@@ -106,7 +106,7 @@ Restore procedure:
 | Salt key | **No** | It encrypts provider credentials in the database; rotating it makes them unreadable |
 | DB password | Yes | Change in RDS → update Secret → restart; also update CSMS |
 | Redis password | Yes | Change in DCS → update Secret → restart |
-| Provider keys | Yes | Edit `secrets/app.env` → `make app-deploy` |
+| Provider keys | Yes | Edit `$LITELLM_DEPLOY_HOME/secrets/app.env` → `make app-deploy` |
 
 Master key rotation is a hard cutover: LiteLLM accepts one master key at a
 time. Announce the window, update the Secret, restart, then re-issue any

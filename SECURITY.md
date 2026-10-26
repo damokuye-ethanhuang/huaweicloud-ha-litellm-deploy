@@ -33,7 +33,7 @@ LiteLLM version is bumped as part of normal maintenance; see
 ## What we already assume
 
 - The Terraform state contains generated secrets. Protect it accordingly.
-- `secrets/app.env` is a local file and is gitignored; leaking it is a
+- `$LITELLM_DEPLOY_HOME/secrets/app.env` is a local file and is gitignored; leaking it is a
   credential incident, not a bug.
 - The lab example (`terraform/examples/vm-single`) is deliberately insecure:
   plain HTTP, secrets in user_data, single node. It is documented as such and

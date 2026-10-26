@@ -17,7 +17,7 @@ network paths.
 | `LITELLM_SALT_KEY` | `random_password`, 48 chars | CSMS, Terraform state, Kubernetes Secret | Pods only |
 | RDS password | `random_password`, 24 chars | CSMS, Terraform state, Kubernetes Secret | Pods only |
 | Redis password | `random_password`, 24 chars | CSMS, Terraform state, Kubernetes Secret | Pods only |
-| Provider keys | You | `secrets/app.env` (gitignored) → Kubernetes Secret | Pods only |
+| Provider keys | You | `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored) → Kubernetes Secret | Pods only |
 
 Rules that are enforced by the code:
 
@@ -174,6 +174,6 @@ summarises. Security-relevant items repeated here for review purposes:
 - [ ] `bastion_ssh_cidrs` contains only operator egress
 - [ ] salt key backed up outside Terraform state as well
 - [ ] image verified with cosign and mirrored to SWR
-- [ ] `secrets/app.env` gitignored and absent from shell history
+- [ ] `$LITELLM_DEPLOY_HOME/secrets/app.env` gitignored and absent from shell history
 - [ ] alarm rules and dashboard imported from `monitoring/`
 - [ ] restore drill completed on a non-production RDS instance

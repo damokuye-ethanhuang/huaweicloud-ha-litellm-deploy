@@ -29,8 +29,8 @@ source "$(dirname "$0")/lib.sh"
 
 REPO="$(repo_root)"
 load_credentials
+ensure_runtime_dirs
 TF_DIR="$REPO/terraform/examples/cce-ha"
-OUT_DIR="$REPO/out"
 REMOTE=0
 STAGE=""
 for arg in "$@"; do
@@ -55,7 +55,7 @@ resolve_cce_version() {
     fi
   done
   [ -n "$py" ] || return 0
-  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$REPO/secrets/hw.env" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
+  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$SECRETS_DIR/hw.env" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
     return 0
   fi
   log "resolving the CCE version currently supported in this region"
@@ -75,7 +75,7 @@ resolve_az() {
     fi
   done
   [ -n "$py" ] || return 0
-  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$REPO/secrets/hw.env" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
+  if [ -z "${HW_ACCESS_KEY:-}" ] && [ ! -f "$SECRETS_DIR/hw.env" ] && [ ! -f "$HOME/.huaweicloud/credentials" ]; then
     return 0
   fi
   log "resolving availability zones (az_policy from deploy-inputs.yaml)"
@@ -87,7 +87,7 @@ run_preflight() {
   resolve_az
   log "preflight: validating deploy-inputs.yaml"
   python3 "$REPO/scripts/preflight.py" || die "preflight blocked - fix deploy-inputs.yaml and rerun"
-  ok "preflight passed; artifacts rendered into out/"
+  ok "preflight passed; artifacts rendered into $OUT_DIR"
 }
 
 run_plan() {
@@ -140,7 +140,7 @@ run_app() {
 
   kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
 
-  log "namespace secret (values from Terraform, provider keys from secrets/app.env if present)"
+  log "namespace secret (values from Terraform, provider keys from app.env if present)"
   secret_args=(
     --from-literal=DATABASE_URL="$(jq -r .DATABASE_URL <<<"$APP_ENV_JSON")"
     --from-literal=LITELLM_MASTER_KEY="$(jq -r .LITELLM_MASTER_KEY <<<"$APP_ENV_JSON")"
@@ -150,10 +150,10 @@ run_app() {
     --from-literal=REDIS_PASSWORD="$(jq -r .REDIS_PASSWORD <<<"$APP_ENV_JSON")"
     --from-literal=REDIS_SSL="$(jq -r .REDIS_SSL <<<"$APP_ENV_JSON")"
   )
-  if [ -f "$REPO/secrets/app.env" ]; then
-    secret_args+=(--from-env-file="$REPO/secrets/app.env")
+  if [ -f "$SECRETS_DIR/app.env" ]; then
+    secret_args+=(--from-env-file="$SECRETS_DIR/app.env")
   else
-    warn "secrets/app.env not found: model provider keys are not configured"
+    warn "$SECRETS_DIR/app.env not found: model provider keys are not configured"
   fi
   kubectl -n "$NAMESPACE" create secret generic litellm-secrets \
     "${secret_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -245,8 +245,8 @@ run_verify_ui() {
 
 run_bastion_key() {
   # Terraform owns the keypair. Write the private half somewhere the SSH/rsync
-  # paths can use, 0600, inside .local (gitignored).
-  local out="$REPO/.local/bastion_key"
+  # paths can use, 0600, under $STATE_DIR (outside the repository).
+  local out="$STATE_DIR/bastion_key"
   local key
   key="$(terraform_output "$TF_DIR" bastion_private_key 2>/dev/null || true)"
   if [ -z "$key" ]; then

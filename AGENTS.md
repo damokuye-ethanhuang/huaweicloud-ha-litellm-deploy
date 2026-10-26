@@ -16,10 +16,10 @@ code is the authority on *how*.
    `tfplan`. It is legitimate to run `plan`; it is a policy violation to run
    `terraform apply -auto-approve` directly.
 4. **Secrets never enter arguments, files or logs.** AK/SK live in
-   `secrets/hw.env` (written by `creds.sh set`, gitignored) or in the
+   `$LITELLM_DEPLOY_HOME/secrets/hw.env` (written by `creds.sh set`, gitignored) or in the
    environment; never paste them into a chat, a commit or `deploy-inputs.yaml`.
    Generated passwords are the job of Terraform. Provider API keys belong in
-   `secrets/app.env` (gitignored). When you display output from Terraform,
+   `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored). When you display output from Terraform,
    redact values of type `sensitive`. After a test, `handoff.py scrub` then
    `handoff.py check` must pass.
 5. **Stop on failure.** Each stage either succeeds or stops. Do not "work
@@ -103,7 +103,7 @@ python3 scripts/inputs-table.py --format csv
 `deploy-inputs.yaml` → `models:` is an array; any number of entries. Required
 per entry: `name`, `model`, `mode`. Optional: `api_base` (omit for ModelArts
 VPCEP), `max_tokens`, `rpm`, `tpm`. `api_key_env` names an environment variable
-that must exist in `secrets/app.env`; the key itself is never written to the
+that must exist in `$LITELLM_DEPLOY_HOME/secrets/app.env`; the key itself is never written to the
 inputs file.
 
 When the operator says "add another model", append to the array — never replace
@@ -130,7 +130,7 @@ Read `version-presets.yaml`. `preset` is the validated baseline.
   credentials become unreadable)
 - rotating `LITELLM_SALT_KEY` after models exist
 - adding `0.0.0.0/0`, an EIP, or a public listener to make something "work"
-- committing `secrets/app.env`, `*.tfvars`, `.terraform/`, `out/`, kubeconfigs
+- committing `$LITELLM_DEPLOY_HOME/secrets/app.env`, `*.tfvars`, `.terraform/`, `out/`, kubeconfigs
 - running `scripts/destroy.sh` without explicit, per-session operator
   confirmation (`CONFIRM=yes` must come from them, not from you)
 - installing tools from the internet on the operator's behalf without saying so

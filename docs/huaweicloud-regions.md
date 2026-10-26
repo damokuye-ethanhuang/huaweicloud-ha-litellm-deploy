@@ -112,7 +112,7 @@ preferred for reproducibility.
 ## Verifying a region quickly
 
 ```bash
-./scripts/creds.sh load    # exports HW_ACCESS_KEY / HW_SECRET_KEY from secrets/hw.env
+./scripts/creds.sh load    # exports HW_ACCESS_KEY / HW_SECRET_KEY from $LITELLM_DEPLOY_HOME/secrets/hw.env
 cat > /tmp/az.tf <<'EOF'
 terraform {
   required_providers {

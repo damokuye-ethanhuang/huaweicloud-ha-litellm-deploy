@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the in-cluster stages from a machine that cannot reach the cluster.
 #
-#   ./scripts/remote-deploy.sh bundle          # render out/bastion/ locally
+#   ./scripts/remote-deploy.sh bundle          # render $OUT_DIR/bastion/ locally
 #   ./scripts/remote-deploy.sh push            # upload to the bastion
 #   ./scripts/remote-deploy.sh deploy-app      # helm install, executed ON the bastion
 #   ./scripts/remote-deploy.sh verify          # smoke test, executed ON the bastion
@@ -39,11 +39,11 @@ BASTION_USER="${BASTION_USER:-root}"
 # Terraform generates the keypair and `deploy.sh bastion-key` writes it here, so
 # default to it: requiring an export on every call is how the operator ends up
 # with a half-configured shell and a stage that "cannot find the bastion".
-if [ -z "${BASTION_KEY:-}" ] && [ -z "${BASTION_PASSWORD:-}" ] && [ -f "$(repo_root)/.local/bastion_key" ]; then
-  BASTION_KEY="$(repo_root)/.local/bastion_key"
+if [ -z "${BASTION_KEY:-}" ] && [ -z "${BASTION_PASSWORD:-}" ] && [ -f "$STATE_DIR/bastion_key" ]; then
+  BASTION_KEY="$STATE_DIR/bastion_key"
 fi
 REMOTE_DIR="${REMOTE_DIR:-/root/litellm-bundle}"
-PROVIDER_ENV_FILE="${PROVIDER_ENV_FILE:-$REPO/secrets/app.env}"
+PROVIDER_ENV_FILE="${PROVIDER_ENV_FILE:-$SECRETS_DIR/app.env}"
 
 remote_host() {
   local host="${BASTION_HOST:-}"
@@ -75,7 +75,7 @@ setup_ssh() {
 # ---------------------------------------------------------------- bundle
 cmd_bundle() {
   require terraform jq python3
-  [ -f "$OUT_DIR/helm-values.yaml" ] || die "out/helm-values.yaml missing; run './scripts/deploy.sh preflight' first"
+  [ -f "$OUT_DIR/helm-values.yaml" ] || die "$OUT_DIR/helm-values.yaml missing; run './scripts/deploy.sh preflight' first"
 
   log "rendering bundle into $BUNDLE_DIR"
   rm -rf "$BUNDLE_DIR"

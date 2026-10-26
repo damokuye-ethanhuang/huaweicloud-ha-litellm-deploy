@@ -15,9 +15,10 @@ still present in git history - a secret removed by `git rm` is still in the
 object database and still published by `git push`.
 
 Publish with `git archive` or a fresh clone, never a zip of the working
-directory: `.local/` holds the bastion private key, `out/` holds a rendered
-`app.env` with the master and salt keys, and `terraform.tfstate` holds every
-generated password. All three are gitignored, none of them are safe to ship.
+directory. Runtime state is already kept outside the checkout
+(`$LITELLM_DEPLOY_HOME`, default `~/.litellm-deploy`: `secrets/`, `out/`,
+`state/` with the bastion private key), but a working copy can still hold
+`terraform/examples/cce-ha/terraform.tfstate` with every generated password.
 
 ```bash
 make bootstrap     # toolcheck
@@ -33,7 +34,7 @@ local run is a good predictor.
 There is no hand-edited `config.yaml`. Non-secret settings live in
 `charts/litellm/values.yaml` under `config.settings`, the model list is rendered
 from `deploy-inputs.yaml`, and `scripts/deploy.sh preflight` writes the result to
-`out/helm-values.yaml`. Edit the inputs, re-run preflight, redeploy:
+`$LITELLM_DEPLOY_HOME/out/helm-values.yaml`. Edit the inputs, re-run preflight, redeploy:
 
 ```bash
 ./scripts/deploy.sh preflight

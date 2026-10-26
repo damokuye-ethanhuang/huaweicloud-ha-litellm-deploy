@@ -89,7 +89,7 @@ unattended — it includes `apply`.
 ### Credentials
 
 Create a **dedicated IAM user**; do not reuse a production account's AK/SK.
-They live in one file, `secrets/hw.env`, which is gitignored:
+They live in one file, `$LITELLM_DEPLOY_HOME/secrets/hw.env`, which is gitignored:
 
 ```bash
 ./scripts/creds.sh set        # prompts, hides input, chmod 600
@@ -284,12 +284,12 @@ emits a stable event stream (`-json`, UI 1.0, `apply_progress` every ~10 s);
 12:19:02 apply complete 31 added, 0 changed, 0 destroyed in 16m00s
 ```
 
-- every event is archived to `out/apply-timeline.jsonl`; the run ends with the
+- every event is archived to `$LITELLM_DEPLOY_HOME/out/apply-timeline.jsonl`; the run ends with the
   five slowest resources, so a slow stage can be analysed afterwards instead of
   by re-running it;
 - `--heartbeat` (30 s) re-prints in-flight resources when a provider goes quiet,
   which distinguishes "slow" from "wedged";
-- `--replay out/apply-timeline.jsonl` renders a past run for a ticket;
+- `--replay $LITELLM_DEPLOY_HOME/out/apply-timeline.jsonl` renders a past run for a ticket;
 - output values are counted, never printed.
 
 This stays in the CLI on purpose. Terrakube, Atlantis and tf-controller are good
@@ -358,7 +358,7 @@ ssh -i "$BASTION_KEY" root@"$(terraform -chdir=terraform/examples/cce-ha output 
 ```
 
 `--remote` runs `scripts/remote-deploy.sh`: `bundle` → `push` → helm on the
-bastion. Inspect the bundle at `out/bastion/` if a push fails.
+bastion. Inspect the bundle at `$LITELLM_DEPLOY_HOME/out/bastion/` if a push fails.
 
 **Before the first `deploy-app` of a version** (on the bastion):
 
@@ -373,7 +373,7 @@ What it does, in order:
 
 1. writes `kube_config_raw` to `~/.kube/litellm-cce.yaml` (0600);
 2. creates the namespace and the `litellm-secrets` Secret from Terraform
-   outputs, merged with any provider keys in `secrets/app.env` (gitignored);
+   outputs, merged with any provider keys in `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored);
 3. renders the values file (`scripts/render-helm-values.py`). In
    `elb_mode = ingress` it writes `kubernetes.io/elb.autocreate` (dedicated,
    `type: inner`, VIP in the **access** subnet, backends in the **app** subnet)
@@ -387,7 +387,7 @@ What it does, in order:
 If the migration fails, the release stops and the previous pods keep serving.
 Fix the cause and re-run; see [troubleshooting](troubleshooting.md).
 
-Provider keys: put them in `secrets/app.env` (never in `deploy-inputs.yaml`,
+Provider keys: put them in `$LITELLM_DEPLOY_HOME/secrets/app.env` (never in `deploy-inputs.yaml`,
 never on a command line). A model whose `api_key_env` is missing from that file
 simply has no key — that is valid for endpoints that do not authenticate.
 
@@ -606,7 +606,7 @@ only shows up as `ELB.8904` in `kubectl describe ingress`.
 For visual evidence, run from a machine outside the VPC:
 
 ```bash
-./scripts/deploy.sh verify-ui         # writes out/verification/litellm-ui.{html,png}
+./scripts/deploy.sh verify-ui         # writes $LITELLM_DEPLOY_HOME/out/verification/litellm-ui.{html,png}
 ```
 
 It fetches `/ui/` through the bastion, opens an ssh tunnel to the private VIP,
@@ -626,7 +626,7 @@ Destroying the stack deletes the database. Take a manual backup first if the
 data matters.
 
 `scrub` copies `deploy-inputs.yaml` and anything under `secrets/` to
-`.local/handoff-<timestamp>/` (gitignored) before clearing: project name,
+`$LITELLM_DEPLOY_HOME/state/handoff-<timestamp>/` (gitignored) before clearing: project name,
 customer CIDRs, model endpoints and both credential files. `check` is what you
 run before handing a laptop back or opening a PR.
 

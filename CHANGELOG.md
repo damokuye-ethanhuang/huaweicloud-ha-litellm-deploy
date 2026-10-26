@@ -11,7 +11,7 @@ All notable changes to this project are documented here. The format follows
 - `scripts/apply-stream.py` + `./scripts/deploy.sh apply-stream`: renders
   Terraform's machine-readable stream (`apply_start` / `apply_progress` every
   ~10 s / `apply_complete` with elapsed) as live per-resource progress, archives
-  the timeline to `out/apply-timeline.jsonl`, and prints the slowest resources.
+  the timeline to `$LITELLM_DEPLOY_HOME/out/apply-timeline.jsonl`, and prints the slowest resources.
   Same saved-plan gate as `apply-infra`; `--replay` re-renders a past run and
   `--heartbeat` distinguishes slow from wedged.
 - `docs/index.md` - the authoritative file map: what every script, module and
@@ -106,7 +106,7 @@ All notable changes to this project are documented here. The format follows
   Redis and the CCE API; pods still cannot reach the data layer. A subnet whose
   CIDR does not match the carved slot now fails at plan time instead of halfway
   through an apply.
-- **Credentials have one home.** AK/SK live in `secrets/hw.env` (gitignored,
+- **Credentials have one home.** AK/SK live in `$LITELLM_DEPLOY_HOME/secrets/hw.env` (gitignored,
   `chmod 600`) written by `scripts/creds.sh`; exported variables still win, so CI
   needs no file. The docs no longer tell anyone to `export` secrets by hand.
 - **Model schema.** `provider` is gone (it never existed in code); `model`

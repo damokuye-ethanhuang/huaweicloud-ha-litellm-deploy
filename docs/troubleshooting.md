@@ -314,8 +314,8 @@ was not), ssh offers a key the server never received and every login fails
 while the private key itself is perfectly valid.
 
 ```bash
-ssh-keygen -y -f .local/bastion_key > .local/bastion_key.pub   # rewrite the .pub
-ssh -vv -i .local/bastion_key root@<bastion> 2>&1 | grep Offering   # shows which key is offered
+ssh-keygen -y -f $LITELLM_DEPLOY_HOME/state/bastion_key > $LITELLM_DEPLOY_HOME/state/bastion_key.pub   # rewrite the .pub
+ssh -vv -i $LITELLM_DEPLOY_HOME/state/bastion_key root@<bastion> 2>&1 | grep Offering   # shows which key is offered
 ```
 
 `./scripts/deploy.sh bastion-key` rewrites both halves for this reason.

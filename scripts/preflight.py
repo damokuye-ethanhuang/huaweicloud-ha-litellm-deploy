@@ -38,10 +38,20 @@ from typing import Any
 from urllib.parse import urlparse
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def _runtime_home() -> Path:
+    """Runtime state lives outside the repository; see scripts/lib.sh."""
+    env = os.environ.get("LITELLM_DEPLOY_HOME")
+    return Path(env).expanduser() if env else Path.home() / ".litellm-deploy"
+
+
+RUNTIME_HOME = _runtime_home()
 INPUTS = REPO / "deploy-inputs.yaml"
 PRESETS = REPO / "version-presets.yaml"
 TF_DIR = REPO / "terraform" / "examples" / "cce-ha"
-OUT_DIR = REPO / "out"
+OUT_DIR = Path(os.environ.get("OUT_DIR") or RUNTIME_HOME / "out")
+SECRETS_DIR = Path(os.environ.get("SECRETS_DIR") or RUNTIME_HOME / "secrets")
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 
@@ -224,7 +234,7 @@ def tools(report: Report, need_cluster: bool) -> None:
         report.add(f"tool:{tool}", OK if path else FAIL, path or "missing - see docs/deployment.md")
 
 
-CRED_FILE = REPO / "secrets" / "hw.env"
+CRED_FILE = SECRETS_DIR / "hw.env"
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -248,7 +258,7 @@ def credentials(report: Report) -> None:
     sdk_file = Path(os.path.expanduser("~/.huaweicloud/credentials")).is_file()
 
     if has_env or has_file:
-        where = "environment" if has_env else str(CRED_FILE.relative_to(REPO))
+        where = "environment" if has_env else str(CRED_FILE)
         report.add("credentials", OK, f"AK/SK present from {where} (dedicated IAM user recommended)")
     elif sdk_file:
         report.add("credentials", OK, "AK/SK present in ~/.huaweicloud/credentials")
@@ -256,7 +266,7 @@ def credentials(report: Report) -> None:
         report.add(
             "credentials",
             FAIL,
-            f"fill {CRED_FILE.relative_to(REPO)} (./scripts/creds.sh set) or export HW_ACCESS_KEY / HW_SECRET_KEY",
+            f"fill {CRED_FILE} (./scripts/creds.sh set) or export HW_ACCESS_KEY / HW_SECRET_KEY",
         )
 
 
@@ -893,8 +903,9 @@ def main() -> int:
     (OUT_DIR / "preflight.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if not args.json:
-        print("\nrendered: terraform.tfvars, out/helm-values.yaml, out/models.rendered.yaml,")
-        print("          out/deployment-plan.md, out/preflight.json")
+        print(f"\nrendered: terraform.tfvars, {OUT_DIR}/helm-values.yaml,")
+        print(f"          {OUT_DIR}/models.rendered.yaml, {OUT_DIR}/deployment-plan.md,")
+        print(f"          {OUT_DIR}/preflight.json")
     return 0
 
 

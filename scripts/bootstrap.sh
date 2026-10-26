@@ -28,5 +28,5 @@ check tflint "extra Terraform linting"
 
 printf '\ncredentials (never commit these):\n'
 "$(dirname "$0")/creds.sh" status | sed 's/^/  /'
-printf '\n  fill them with: ./scripts/creds.sh set   (writes secrets/hw.env, chmod 600)\n'
+printf '\n  fill them with: ./scripts/creds.sh set   (writes %s, chmod 600)\n' "$SECRETS_DIR/hw.env"
 printf '  clear after testing: ./scripts/creds.sh clear\n'
