@@ -1,5 +1,18 @@
 # Architecture
 
+## Diagram
+
+`architecture.html` and `architecture.png` are the rendered topology, embedded at
+the top of both READMEs. They are **static artifacts**: the generator was a
+one-off and is deliberately not part of the repository, so the picture cannot
+silently drift when the code moves - a mismatch is visible and gets redrawn.
+
+To redraw after a topology change, rebuild the generator from this description
+(region, AZs, CIDRs, flavours, replica count and version all come from
+`deploy-inputs.yaml`) and write both files back. Keep the layout: subnets as
+labelled groups, one node box per AZ, cloud services in a right-hand column, and
+the four deployment phases along the bottom.
+
 ## Component map
 
 | Layer | Resource | Why |

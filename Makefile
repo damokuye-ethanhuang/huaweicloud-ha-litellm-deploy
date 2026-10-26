@@ -8,7 +8,7 @@ NAMESPACE ?= litellm
 # Every target delegates to scripts/deploy.sh or a single-purpose script; the
 # Makefile is a convenience layer and must not re-implement any logic.
 .PHONY: help bootstrap creds creds-clear creds-check handoff handoff-clean init preflight plan apply-infra deploy-app remote-deploy verify \
-	smoke migrate mirror fmt validate lint destroy package-chart skill-install arch audit
+	smoke migrate mirror fmt validate lint destroy package-chart skill-install audit
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -91,8 +91,6 @@ skill-install: ## Symlink the repo skill into ~/.hermes/skills (single source of
 		"$$HOME/.hermes/skills/software-development/litellm-huaweicloud-deploy"
 	@echo "installed: $$HOME/.hermes/skills/software-development/litellm-huaweicloud-deploy"
 
-arch: ## Regenerate docs/architecture.html from the topology
-	python3 ./scripts/draw-architecture-html.py
 
 package-chart: ## Package the Helm chart into dist/
 	mkdir -p dist

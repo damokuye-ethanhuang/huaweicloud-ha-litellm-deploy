@@ -88,7 +88,6 @@ script, a Terraform module or a document is missing from it.
 | `scripts/check-monitoring.py` | Validates `monitoring/` — alarm metrics exist in the dashboard, JSON parses, links resolve. |
 | `scripts/lint.sh` | Offline validation chain used by `make validate` and CI: fmt, validate, helm lint/template, shellcheck, docs, monitoring. |
 | `scripts/inputs-table.py` | Prints `deploy-inputs.yaml` as a fill-in table (Markdown or CSV) to paste into a ticket or chat. |
-| `scripts/draw-architecture-html.py` | Regenerates `docs/architecture.html` from the topology constants. |
 | `scripts/destroy.sh` | Destroys an example; requires `CONFIRM=yes` because it deletes the database and the salt key. |
 | `scripts/bootstrap.sh` | Toolchain check: prints the versions the repository expects and where they were found. |
 | `scripts/set-input.py` | Set one value in `deploy-inputs.yaml` without touching the rest (used by `seal`/`unseal`); editing the file beats `-var`, which the next apply undoes. |
@@ -139,7 +138,7 @@ script, a Terraform module or a document is missing from it.
 |---|---|
 | `index.md` | This map: what to read when, and what every file is for. |
 | `docs/architecture.md` | Components, failure domains, request path, network segments, upgrade flow. |
-| `architecture.html` | Rendered topology (regenerate with `scripts/draw-architecture-html.py`). |
+| `architecture.html` / `architecture.png` | Rendered topology (static artifact, embedded in both READMEs). The generator is a one-off kept outside the repository - see `docs/architecture.md`. |
 | `docs/deployment.md` | Prerequisites, IAM, credentials, step-by-step deploy, what each stage proves. |
 | `docs/operations.md` | Scaling, upgrades, rollback, backup/restore, key rotation, day-2 checks. |
 | `docs/security.md` | Secrets, network, TLS, image verification, IAM, who may call the gateway. |
