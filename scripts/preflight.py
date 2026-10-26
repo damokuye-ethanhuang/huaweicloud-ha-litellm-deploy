@@ -894,7 +894,9 @@ def main() -> int:
     if args.check_only:
         return 0
 
-    OUT_DIR.mkdir(exist_ok=True)
+    # exist_ok=False here would crash on a fresh LITELLM_DEPLOY_HOME; parents=True
+    # because the operator may point it at a directory that does not exist yet.
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     TF_DIR.mkdir(parents=True, exist_ok=True)
     (TF_DIR / "terraform.tfvars").write_text(render_tfvars(v), encoding="utf-8")
     (OUT_DIR / "helm-values.yaml").write_text(render_helm(v, flat, doc), encoding="utf-8")
