@@ -1,0 +1,16 @@
+# Keep LF in the working tree on every platform. Terraform and shell scripts
+# break in confusing ways when a Windows checkout rewrites them to CRLF, and
+# `bash\r` is not a helpful error message.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.tf   text eol=lf
+*.hcl  text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.tpl  text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.ico  binary

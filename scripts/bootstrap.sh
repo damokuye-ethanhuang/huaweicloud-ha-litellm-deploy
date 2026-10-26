@@ -20,6 +20,17 @@ check helm "https://helm.sh/docs/intro/install/"
 check kubectl "https://kubernetes.io/docs/tasks/tools/"
 check jq "package manager"
 check curl "package manager"
+check python3 "3.9+; on Windows install it inside WSL2, not Git Bash"
+
+# The scripts are bash and assume POSIX paths, chmod and ~ expansion. WSL2 is a
+# real Linux and works; Git Bash passes most things but mangles some paths and
+# silently ignores chmod, so say so instead of failing halfway through an apply.
+case "${OSTYPE:-}" in
+  msys* | cygwin*)
+    printf '\n[warn] Git Bash detected. Untested: use WSL2 (Ubuntu 22.04+) and clone inside it.\n'
+    printf '       Native PowerShell cannot run these scripts.\n'
+    ;;
+esac
 
 printf '\noptional:\n'
 check docker "needed for scripts/mirror-image.sh"

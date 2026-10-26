@@ -148,11 +148,30 @@ carries no credentials. The repository holds code and `.example` templates only.
 | `project_name` | `deploy-inputs.yaml` | prefix for every resource name, 3-24 lowercase |
 | `region` | `deploy-inputs.yaml` | e.g. `cn-southwest-2` |
 | `owner` | `deploy-inputs.yaml` | goes into resource tags |
-| `bastion_ssh_cidrs` | `deploy-inputs.yaml` | public egress IPs allowed to SSH the bastion (the only place public ranges are accepted) |
-| `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | VPC-internal ranges allowed to reach the gateway |
+| `bastion_ssh_cidrs` | `deploy-inputs.yaml` | public egress IPs allowed to SSH the bastion (the only place public ranges are accepted) - normally the machine running the deployment |
+| `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | who may **call** the gateway / who may **reach the Admin UI**; see below |
 | `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`; omit `api_base` for the ModelArts VPCEP path |
 | `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | written interactively by `./scripts/creds.sh set` |
 | model keys | `secrets/app.env` | variable names must match each model's `api_key_env` |
+
+**What `client_cidrs` / `admin_cidrs` actually are.** They are *source* ranges
+in the ELB security group's 443 ingress rule - who is allowed in, not networks to
+create:
+
+- `client_cidrs`: subnets allowed to call the inference API. Add your
+  application's subnet when it exists.
+- `admin_cidrs`: subnets allowed to reach the Admin UI and key-management API.
+  Must be narrower, and must cover both the ops subnet (bastion, `10.0.3.0/24`)
+  and the access subnet (ELB VIP, `10.0.0.0/24`); miss the access subnet and a
+  `curl` from the bastion hangs instead of returning 403.
+- Both must be VPC-internal (peering and VPN ranges are fine). A public CIDR is
+  rejected by preflight.
+- **You can leave them alone.** The default `10.0.3.0/24` means "bastion only",
+  which is enough for a smoke test. Add the application subnet to
+  `client_cidrs` later; there is no need to plan a new network before deploying.
+- One trap: if the caller also runs inside this CCE cluster (`overlay_l2`), its
+  traffic is SNATed to a node IP before leaving the VPC - add the app subnet
+  (default `10.0.1.0/24`) to `client_cidrs`, or in-cluster callers are refused.
 
 **Prompt to hand an agent** (edit the parameters, paste as-is):
 
@@ -165,13 +184,18 @@ My parameters:
   project_name=acme-litellm
   region=cn-southwest-2
   owner=platform-team
-  bastion_ssh_cidrs=["<my public egress IP>/32"]
-  client_cidrs=["10.0.0.0/24"]  admin_cidrs=["10.0.0.0/24"]
+  # who may SSH the bastion: the public egress IP of the machine running this
+  bastion_ssh_cidrs=["<public egress IP of the agent's client>/32"]
+  # who may call the gateway / reach the Admin UI: VPC-internal *sources*,
+  # not networks to create; the default (ops subnet only) is enough to test
+  client_cidrs=["10.0.3.0/24"]
+  admin_cidrs=["10.0.3.0/24"]
   models: glm-5.3 -> openai/glm-5.3, api_base omitted (ModelArts VPCEP)
 
 Rules:
-1. Never ask me for AK/SK: I have exported them in my shell. Never write them to
-   a file or a log.
+1. Never ask me for AK/SK: I run ./scripts/creds.sh set myself (hidden input,
+   writes ~/.litellm-deploy/secrets/hw.env), or export them in the same shell.
+   Do not read, print or write those two values.
 2. Run preflight first and ask all FAIL items at once; then stop after plan and
    show me the summary.
 3. Only after I confirm, run apply-infra, reporting progress with apply-stream.
@@ -179,6 +203,19 @@ Rules:
    check, and do not "fix" anything with a public EIP or a NAT gateway.
 5. Finish with handoff.py scrub && check; it must print clean.
 ```
+
+
+**Where it runs**
+
+| Environment | Status | Notes |
+|---|---|---|
+| Linux / macOS | supported | bash + POSIX tools; this is what the scripts are developed on |
+| Windows + WSL2 | recommended | clone inside WSL, install terraform / helm / kubectl / python3 / jq |
+| Windows + Git Bash | untested | path translation and `chmod` differ from Linux; failures tend to appear mid-apply |
+| Windows PowerShell | unsupported | the entry points are bash |
+
+The deployment itself runs on Linux in the cloud (CCE nodes, the bastion); the
+constraint is only on the machine you type commands on.
 
 ### Lab tier (single VM, ~10 minutes) — evaluation only
 

@@ -123,11 +123,21 @@ EOF
 | `project_name` | `deploy-inputs.yaml` | 所有资源名的前缀，3–24 位小写 |
 | `region` | `deploy-inputs.yaml` | 例如 `cn-southwest-2` |
 | `owner` | `deploy-inputs.yaml` | 负责人，写进资源标签 |
-| `bastion_ssh_cidrs` | `deploy-inputs.yaml` | 允许 SSH 堡垒机的公网出口 IP（唯一接受公网段的地方） |
-| `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | 允许访问网关的 VPC 内私网段 |
+| `bastion_ssh_cidrs` | `deploy-inputs.yaml` | 允许 SSH 堡垒机的公网出口 IP（唯一接受公网段的地方），通常是执行部署的这台客户端的出口 IP |
+| `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | 谁可以**调用**网关 / 谁可以**访问 Admin UI** 的源网段，见下方说明 |
 | `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`；`api_base` 省略即走 ModelArts VPCEP |
 | `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入 |
 | 模型 KEY | `secrets/app.env` | 变量名与模型条目的 `api_key_env` 对应 |
+
+**`client_cidrs` / `admin_cidrs` 是什么，要不要动？**
+
+这两个是「谁可以访问」的**来源**网段，写进 ELB 安全组的 443 入向规则；**不是让你新建网段**：
+
+- `client_cidrs`：允许调用推理接口（`/v1/chat/completions`）的源网段。业务系统在哪个子网，就把它加进来。
+- `admin_cidrs`：允许访问 Admin UI 与密钥管理 API 的源网段，应比 `client_cidrs` 窄。必须同时覆盖 ops 子网（堡垒机，`10.0.3.0/24`）和 access 子网（ELB VIP，`10.0.0.0/24`），漏掉 access 子网时堡垒机 `curl` 会一直挂住而不报 403。
+- 两者都必须是 VPC 内私网地址（可以是对等连接、VPN 对端网段），公网段会被 preflight 直接拒绝。
+- **可以不补**：默认值就是 `10.0.3.0/24`（运维子网），含义是「只有堡垒机能访问」，自测完全够用。等业务接入时再把业务子网 CIDR 加进 `client_cidrs`，不需要为了部署先去规划一个新网段。
+- 一个容易踩的点：调用方如果也跑在这个 CCE 集群里（`overlay_l2` 容器网络），出 VPC 前会被 SNAT 成节点 IP，所以要把 app 子网（默认 `10.0.1.0/24`）加进 `client_cidrs`，否则集群内的应用调自己的网关会被拒。
 
 **给 agent 的提示词**（改掉参数就能直接粘贴）：
 
@@ -139,17 +149,35 @@ preflight → plan → 人工确认 → apply-infra → deploy-app → verify �
   project_name=acme-litellm
   region=cn-southwest-2
   owner=platform-team
-  bastion_ssh_cidrs=["<我的公网出口IP>/32"]
-  client_cidrs=["10.0.0.0/24"]  admin_cidrs=["10.0.0.0/24"]
+  # 谁可以 SSH 堡垒机：执行本提示词的客户端（agent 所在机器）的公网出口 IP
+  bastion_ssh_cidrs=["<执行本提示词的客户端公网出口IP>/32"]
+  # 谁可以调用网关 / 访问 Admin UI：VPC 内私网段，是「来源」不是新建网段
+  # 不填就沿用默认 10.0.3.0/24（只有运维子网，够自测）
+  client_cidrs=["10.0.3.0/24"]
+  admin_cidrs=["10.0.3.0/24"]
   模型：glm-5.3 → openai/glm-5.3，api_base 省略（走 ModelArts VPCEP）
 
 规则：
-1. 不要向我索要 AK/SK，我已经在 shell 里 export，也不要写进任何文件或日志。
+1. 不要向我索要 AK/SK：我会自己执行 ./scripts/creds.sh set（隐藏输入，
+   写入 ~/.litellm-deploy/secrets/hw.env），或在同一个 shell 里 export。
+   你不要读取、打印或写入这两个值。
 2. 先跑 preflight，把 FAIL 项一次问完；然后只跑到 plan，把摘要给我确认。
 3. 我说「确认」之后再 apply-infra，过程中用 apply-stream 汇报进度。
 4. 任何阶段失败就停下，报阶段名和原始错误；不要绕过检查，也不要用公网 EIP/NAT 绕问题。
 5. 收尾跑 handoff.py scrub && check，必须输出 clean。
 ```
+
+
+**运行环境**
+
+| 环境 | 状态 | 说明 |
+|---|---|---|
+| Linux / macOS | ✅ 支持 | 脚本是 bash + POSIX 工具，这是原始开发环境 |
+| Windows + WSL2 | ✅ 推荐 | 在 WSL 里 clone，并装 terraform / helm / kubectl / python3 / jq |
+| Windows + Git Bash | ⚠️ 未验证 | 路径转换和 `chmod` 与 Linux 不一致，可能在中途才失败 |
+| Windows PowerShell | ❌ 不支持 | 入口脚本是 bash |
+
+部署本身跑在云上的 Linux（CCE 节点、堡垒机），和客户端装什么系统无关；限制只在你敲命令的这一侧。
 
 ### 单机版（vm-single，约 10 分钟）——仅评估
 
