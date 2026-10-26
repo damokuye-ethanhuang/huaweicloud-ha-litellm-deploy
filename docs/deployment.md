@@ -97,6 +97,11 @@ They live in one file, `$LITELLM_DEPLOY_HOME/secrets/hw.env`, which is gitignore
 ./scripts/creds.sh clear      # back to empty, run this after testing
 ```
 
+Four ways to supply the key - interactive `set`, environment variables,
+`set --from-env`, or the SDK profile - including the four error messages that
+command produces and how to prove the key is gone afterwards, are in
+[`credentials.md`](credentials.md).
+
 When a customer supplies the credentials, send them `./scripts/handoff.py form`
 instead: it states where each value goes without ever asking for a secret in a
 chat window. `HW_ACCESS_KEY` / `HW_SECRET_KEY` exported in the shell still win

@@ -135,7 +135,7 @@ EOF
 | `bastion_ssh_cidrs` | `deploy-inputs.yaml` | 允许 SSH 堡垒机的公网出口 IP（唯一接受公网段的地方），通常是执行部署的这台客户端的出口 IP |
 | `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | 谁可以**调用**网关 / 谁可以**访问 Admin UI** 的源网段，见下方说明 |
 | `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`；`api_base` 省略即走 ModelArts VPCEP |
-| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入，四种给法见 `secrets/README.md` |
+| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `$LITELLM_DEPLOY_HOME/secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入；四种给法、报错对照、清理验证见 [`docs/credentials.md`](docs/credentials.md) |
 | 模型 KEY | `secrets/app.env` | 变量名与模型条目的 `api_key_env` 对应 |
 
 **`client_cidrs` / `admin_cidrs` 是什么，要不要动？**

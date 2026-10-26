@@ -160,7 +160,7 @@ carries no credentials. The repository holds code and `.example` templates only.
 | `bastion_ssh_cidrs` | `deploy-inputs.yaml` | public egress IPs allowed to SSH the bastion (the only place public ranges are accepted) - normally the machine running the deployment |
 | `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | who may **call** the gateway / who may **reach the Admin UI**; see below |
 | `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`; omit `api_base` for the ModelArts VPCEP path |
-| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | written interactively by `./scripts/creds.sh set` |
+| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `$LITELLM_DEPLOY_HOME/secrets/hw.env` | written interactively by `./scripts/creds.sh set`; four ways, the error table and the cleanup proof in [`docs/credentials.md`](docs/credentials.md) |
 | model keys | `secrets/app.env` | variable names must match each model's `api_key_env` |
 
 **What `client_cidrs` / `admin_cidrs` actually are.** They are *source* ranges

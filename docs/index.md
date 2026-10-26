@@ -8,7 +8,8 @@ script, a Terraform module or a document is missing from it.
 - New to the repository → [README](../README.md) for the what/why, then
   [docs/architecture.md](architecture.md) for the shape.
 - About to deploy → [docs/sa-checklist.md](sa-checklist.md) →
-  [docs/inputs-guide.md](inputs-guide.md) → [docs/deployment.md](deployment.md).
+  [docs/inputs-guide.md](inputs-guide.md) → [docs/credentials.md](credentials.md) →
+  [docs/deployment.md](deployment.md).
 - Something is broken → [docs/troubleshooting.md](troubleshooting.md), then
   [docs/deployment-optimizations.md](deployment-optimizations.md) (the same
   failure seen in the field, with the fix).
@@ -141,6 +142,7 @@ script, a Terraform module or a document is missing from it.
 | `docs/permissions.md` | Required IAM roles per stage, minimal custom policy, CCE agency caveat. |
 | `docs/sa-checklist.md` | Tick-box planning checklist: network, egress, data, encryption, go-live. |
 | `docs/inputs-guide.md` | How to fill each input, how to write the model array. |
+| `docs/credentials.md` | How to hand over AK/SK the four ways, what lands on disk, the four ways it fails, and how to prove it is gone. |
 | `docs/manual-deployment.md` | Console click-through when Terraform is not allowed. |
 | `docs/upgrade-procedure.md` | What a version bump actually requires before `ACK_UPGRADE=1`. |
 | `docs/troubleshooting.md` | Symptom → cause → fix, including the four things that block a teardown. |

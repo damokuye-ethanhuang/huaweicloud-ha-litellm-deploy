@@ -1,6 +1,8 @@
 # Secrets: examples only
 
-This directory holds **templates**, not credentials. The real files live outside
+This directory holds **templates**, not credentials. The long version of
+this page - four ways to supply AK/SK, the error table, and how to prove the
+credential is gone - is [`docs/credentials.md`](../docs/credentials.md). The real files live outside
 the repository, in `$LITELLM_DEPLOY_HOME` (default `~/.litellm-deploy`):
 
 ```

@@ -24,6 +24,13 @@ usage() {
   sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
+# A pasted key commonly carries a trailing space or a CR from a Windows copy.
+# The signature failure that causes is invisible later, so normalise it here and
+# tell the operator instead of failing at plan time.
+normalise() {
+  printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
 mask() {
   local value="$1"
   if [ -z "$value" ]; then
@@ -103,6 +110,15 @@ cmd_set() {
 
   if [ -z "$ak" ] || [ -z "$sk" ]; then
     die "both AK and SK are required"
+  fi
+
+  local clean_ak clean_sk
+  clean_ak="$(normalise "$ak")"
+  clean_sk="$(normalise "$sk")"
+  if [ "$clean_ak" != "$ak" ] || [ "$clean_sk" != "$sk" ]; then
+    warn "stripped surrounding whitespace/CR from the pasted value"
+    ak="$clean_ak"
+    sk="$clean_sk"
   fi
 
   umask 077

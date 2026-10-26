@@ -56,7 +56,7 @@
 
 | 什么东西 | 放哪里 | 谁来填 |
 |---|---|---|
-| 华为云 AK/SK | `$LITELLM_DEPLOY_HOME/secrets/hw.env`（`./scripts/creds.sh set`，gitignore） | 部署方或客户 |
+| 华为云 AK/SK | `$LITELLM_DEPLOY_HOME/secrets/hw.env`（`./scripts/creds.sh set`，gitignore）；四种给法见 [`credentials.md`](credentials.md) | 部署方或客户 |
 | 模型 API key | `$LITELLM_DEPLOY_HOME/secrets/app.env`，变量名与 `api_key_env` 一致 | 部署方或客户 |
 | 其余参数 | `deploy-inputs.yaml` | 部署方或客户 |
 
