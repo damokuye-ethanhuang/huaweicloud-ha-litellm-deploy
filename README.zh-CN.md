@@ -57,6 +57,8 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 
 ## 快速开始
 
+> 下文所有命令都在**仓库根目录**执行（提示符是 `.../huaweicloud-ha-litellm-deploy$`）。已经 `cd scripts` 进去了就用 `./creds.sh`，而不是 `creds.sh`——`.` 不在 PATH 里。
+
 ### 第 0 步：工具链（一分钟）
 
 ```bash

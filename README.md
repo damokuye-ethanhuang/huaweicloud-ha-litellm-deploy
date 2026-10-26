@@ -72,6 +72,8 @@ survive a pod or AZ failure.
 
 ## Quick start
 
+> Every command below runs from the **repository root**. If you have already `cd scripts`, call `./creds.sh`, not `creds.sh` - `.` is not on PATH.
+
 ### Step 0: toolchain (one minute)
 
 ```bash
