@@ -137,8 +137,9 @@ script, a Terraform module or a document is missing from it.
 | Document | Contents |
 |---|---|
 | `index.md` | This map: what to read when, and what every file is for. |
+| `docs/repository-map.md` | Every tracked file, what it is for and who calls it; what was removed and why. |
 | `docs/architecture.md` | Components, failure domains, request path, network segments, upgrade flow. |
-| `architecture.html` / `architecture.png` | Rendered topology (static artifact, embedded in both READMEs). The generator is a one-off kept outside the repository - see `docs/architecture.md`. |
+| `architecture.png` / `architecture.zh-CN.png` / `architecture.drawio` | Rendered topology, deploy-time state, embedded in both READMEs; the `.drawio` is the editable source (diagrams.net). The generator is a one-off kept outside the repository - see `docs/architecture.md`. |
 | `docs/deployment.md` | Prerequisites, IAM, credentials, step-by-step deploy, what each stage proves. |
 | `docs/operations.md` | Scaling, upgrades, rollback, backup/restore, key rotation, day-2 checks. |
 | `docs/security.md` | Secrets, network, TLS, image verification, IAM, who may call the gateway. |

@@ -10,10 +10,11 @@ highly available OpenAI-compatible AI gateway on Huawei Cloud.
 
 ![Reference architecture](docs/architecture.png)
 
-<sub>Everything is private: the ELB is internal, CCE has no public endpoint, and
-the bastion's EIP is the only public address - removed by `deploy.sh seal` once
-the deployment is verified. Box labels are in Chinese; sizes, CIDRs and version
-come from `deploy-inputs.yaml`.</sub>
+<sub>Deploy-time state: the bastion's EIP is the only public address and
+`deploy.sh seal` removes it once the deployment is verified. Everything else is
+private - internal ELB, no CCE public endpoint, models reached over the VPCEP.
+Editable source: <a href="docs/architecture.drawio">docs/architecture.drawio</a>
+(diagrams.net); sizes, CIDRs and version come from `deploy-inputs.yaml`.</sub>
 
 ---
 
@@ -398,7 +399,7 @@ The first `terraform plan` in your account is still the real acceptance test.
 |---|---|
 | [docs/index.md](docs/index.md) | **Start here**: which document answers which question, and what every file in the repository is for |
 | [docs/architecture.md](docs/architecture.md) | Components, failure domains, request path, upgrade flow |
-| [docs/architecture.html](docs/architecture.html) | Rendered topology: subnets, request path, ELB ownership, known pitfalls (static artifact) |
+| [docs/architecture.png](docs/architecture.png) | Rendered topology (deploy-time state), also as [drawio](docs/architecture.drawio) |
 | [docs/deployment.md](docs/deployment.md) | Prerequisites, IAM, credentials, step-by-step deploy |
 | [docs/operations.md](docs/operations.md) | Scaling, upgrades, rollback, backup/restore, key rotation |
 | [docs/security.md](docs/security.md) | Secrets, network, TLS, image verification, IAM, who calls the gateway |

@@ -7,10 +7,12 @@
 ![terraform](https://img.shields.io/badge/terraform-%3E%3D1.6-623CE4)
 ![litellm](https://img.shields.io/badge/litellm-v1.106.3-1f6feb)
 
-![参考架构](docs/architecture.png)
+![参考架构](docs/architecture.zh-CN.png)
 
-<sub>全栈私有：ELB 是内网的，CCE 没有公网端点，堡垒机的 EIP 是唯一的公网地址——部署验证完成后
-由 <code>deploy.sh seal</code> 删除。图中的规格、网段、版本都取自 <code>deploy-inputs.yaml</code>。</sub>
+<sub>部署中状态：堡垒机的 EIP 是唯一的公网地址，验证完成后由 <code>deploy.sh seal</code> 删除；
+其余全为私有——内网 ELB、CCE 无公网端点、模型经 VPCEP 私网访问。可编辑源文件：
+<a href="docs/architecture.drawio">docs/architecture.drawio</a>（diagrams.net）。图中规格、网段、
+版本取自 <code>deploy-inputs.yaml</code>。</sub>
 
 ## 这是什么
 
@@ -320,7 +322,7 @@ terraform -chdir=terraform/examples/cce-ha output -json app_env | jq -r .LITELLM
 |---|---|
 | [docs/index.md](docs/index.md) | **先看这篇**：哪个问题看哪篇文档，以及仓库里每个文件的职责 |
 | [docs/architecture.md](docs/architecture.md) | 组件、故障域、请求链路、升级流程 |
-| [docs/architecture.html](docs/architecture.html) | 可视化架构：子网、请求链路、ELB 归属、坑位索引（静态产物） |
+| [docs/architecture.png](docs/architecture.png) | 可视化架构（部署中状态），另有 [drawio 可编辑版](docs/architecture.drawio) |
 | [docs/deployment.md](docs/deployment.md) | 前置条件、IAM、凭据、逐步部署 |
 | [docs/operations.md](docs/operations.md) | 扩缩容、升级、回滚、备份恢复、密钥轮换 |
 | [docs/security.md](docs/security.md) | 密钥、网络、TLS、镜像验签、IAM、谁可以调用 |

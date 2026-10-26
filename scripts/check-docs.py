@@ -149,8 +149,13 @@ def main() -> int:
 
     # The two READMEs must point at the same set of files, or one of them rots.
     if len(link_sets) == 2:
-        only_en = link_sets["README.md"] - link_sets["README.zh-CN.md"]
-        only_zh = link_sets["README.zh-CN.md"] - link_sets["README.md"]
+        # Language variants are expected to differ: README.md links the English
+        # diagram, README.zh-CN.md the Chinese one. Everything else must match.
+        def same_in_both(target: str) -> bool:
+            return not any(marker in target for marker in (".zh-CN.", "-zh-CN.", "_zh-CN."))
+
+        only_en = {t for t in link_sets["README.md"] - link_sets["README.zh-CN.md"] if same_in_both(t)}
+        only_zh = {t for t in link_sets["README.zh-CN.md"] - link_sets["README.md"] if same_in_both(t)}
         for target in sorted(only_en):
             errors.append(f"README.zh-CN.md: missing link to {target} (present in README.md)")
         for target in sorted(only_zh):

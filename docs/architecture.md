@@ -2,8 +2,10 @@
 
 ## Diagram
 
-`architecture.html` and `architecture.png` are the rendered topology, embedded at
-the top of both READMEs. They are **static artifacts**: the generator was a
+`architecture.png` (English), `architecture.zh-CN.png` (Chinese) and
+`architecture.drawio` (editable, diagrams.net) are the topology, embedded at the
+top of both READMEs. They show the **deploy-time** state: the bastion EIP is
+present and `deploy.sh seal` removes it afterwards. They are **static artifacts**: the generator was a
 one-off and is deliberately not part of the repository, so the picture cannot
 silently drift when the code moves - a mismatch is visible and gets redrawn.
 
