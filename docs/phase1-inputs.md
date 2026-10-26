@@ -195,35 +195,13 @@ python3 scripts/inputs-table.py --actionable
 | `litellm_version` | `1.106.3` | 与 `version-presets.yaml` 的 `preset` 一致，是目前唯一完整验证过的基线。升级必须先走 `docs/upgrade-procedure.md`，并用 `ACK_UPGRADE=1` 明确确认 |
 | `cce_cluster_version` | `v1.36` | 留空或保持默认，部署时由官方 SDK 查询本区域当前支持的版本并填入（CCE 会淘汰旧版本，写死会过期） |
 
-## 提示词（整段粘贴给 agent）
+## 提示词
 
-```text
-按三阶段流程部署 LiteLLM 到华为云。仓库就是当前 workspace。
-先读 skills/litellm-huaweicloud-deploy/SKILL.md（三阶段流程）和 AGENTS.md（禁止事项）。
+三个阶段各有一段可直接粘贴的提示词，集中放在 [`docs/prompts.md`](prompts.md)：
 
-【已经改好，不要动】
-- terraform/、charts/、scripts/：第一轮真实部署验证通过，除非我明确要求，不要修改
-- models.yaml：第 3 阶段才填，现在保持 models: [] 空数组，不要往里加模型
-- 渲染产物（terraform.tfvars、out/ 下的文件）由 preflight 生成，不要手改
-
-【这一步只做第 1 阶段：确认参数】
-1. 先跑 ./scripts/fill-inputs.sh --show 告诉我这四个值现在是什么，再跑
-   python3 scripts/inputs-table.py --actionable 确认没有别的缺项。
-   然后逐条问我这 4 个值，每条说清：填什么格式、为什么需要它、填错会怎样。不要自己编值。
-2. 我回答后运行 ./scripts/fill-inputs.sh（交互式）或我用 --yes 参数给你值。
-   这个脚本只改 deploy-inputs.yaml 里的 4 行，其它文件一律不动。
-   然后跑 ./scripts/deploy.sh preflight。
-3. 把 preflight 的 FAIL 逐条解释并给出修法；WARN 也要说明是否需要处理，直到 0 blocking。
-4. 只跑到 ./scripts/deploy.sh plan 就停下，用一段话汇报：将创建多少个资源、关键规格、
-   预计费用、有没有会替换已有资源的破坏性变更。
-5. 我说「确认」之后，才允许 apply-infra。
-
-【规则】
-- 不要向我索要 AK/SK。我自己写进 ~/.litellm-deploy/secrets/hw.env，你只跑 creds.sh status 看状态。
-- 不要把模型写进 deploy-inputs.yaml；模型属于第 3 阶段。
-- 任何阶段失败立刻停，报阶段名和原始错误，不要绕过检查继续。
-- 不要用改安全组、加 EIP/NAT、手动改 tfstate 的方式"让它跑通"。
-```
+- 阶段 1（本页）：填 4 个值 → preflight → plan
+- 阶段 2：`apply-infra` → `deploy-app` → `verify`，验收是 `/v1/models` 返回 `[]`
+- 阶段 3：`models.yaml` → `models --check` → `--apply`
 
 ## 填完自检
 

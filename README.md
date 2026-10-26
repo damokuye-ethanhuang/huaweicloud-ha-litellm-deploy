@@ -82,6 +82,8 @@ survive a pod or AZ failure.
 | **2 baseline** | nothing (no models) | `apply-infra` -> `deploy-app` -> `verify` | readiness `db/redis connected`, `/v1/models` returns **200 + an empty array** |
 | **3 models** | `models.yaml`: models + fallbacks | `models --check` -> `models --apply` | model list correct, one real completion, fallback works both ways |
 
+Paste-ready prompts for each phase live in [`docs/prompts.md`](docs/prompts.md).
+
 Models are a separate phase because they change most often and `terraform apply`
 should not run to add one. Phase 2 deploys a gateway that works with no upstream
 at all, which is what makes an empty `/v1/models` an honest signal about the

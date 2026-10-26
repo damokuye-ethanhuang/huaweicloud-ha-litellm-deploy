@@ -67,6 +67,8 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 | **2 基线** | 无（模型不参与） | `apply-infra` → `deploy-app` → `verify` | readiness `db/redis connected`，`/v1/models` 返回 **200 + 空数组** |
 | **3 模型** | `models.yaml`：模型 + fallback | `models --check` → `models --apply` | 模型列表正确、一次真实 completion、fallback 双向生效 |
 
+每阶段可直接粘贴的提示词在 [`docs/prompts.md`](docs/prompts.md)。
+
 模型单独成阶段的原因：它变更最频繁，而 `terraform apply` 不该为了加一个模型跑一遍。第 2
 阶段部署的是「没有任何上游也能跑通」的网关，这样 `/v1/models` 返回空数组才是控制面的
 真实信号，而不是被模型配置掩盖。
