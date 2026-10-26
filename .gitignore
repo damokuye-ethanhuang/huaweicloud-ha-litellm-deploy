@@ -15,7 +15,7 @@ terraform.rc
 *.tfplan
 *.tfplan.json
 plan.out
-tfplan
+tfplan*
 
 # --- Secrets / local config (never commit) ---
 *.tfvars

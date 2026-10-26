@@ -9,6 +9,16 @@ permissions:
   contents: read
 
 jobs:
+  secrets:
+    name: secrets and PII audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the audit reads every blob ever committed
+      - name: Audit
+        run: python3 scripts/audit-secrets.py
+
   validate:
     name: terraform + helm + scripts
     runs-on: ubuntu-latest

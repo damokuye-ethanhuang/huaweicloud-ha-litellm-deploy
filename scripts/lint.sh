@@ -30,6 +30,9 @@ for dir in terraform/modules/* terraform/examples/*; do
   fi
 done
 
+step "secret audit (working tree)"
+python3 scripts/audit-secrets.py --no-history || fail=1
+
 step "python syntax"
 for f in scripts/*.py; do
   printf '  %-40s' "$f"

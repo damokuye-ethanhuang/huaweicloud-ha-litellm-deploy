@@ -9,6 +9,11 @@
 
 ## Local checks
 
+Before anything goes public, run `make audit`. It fails on a committed saved
+plan, state file or private key, on credential/PII patterns, and on anything
+still present in git history - a secret removed by `git rm` is still in the
+object database and still published by `git push`.
+
 ```bash
 make bootstrap     # toolcheck
 make fmt           # terraform fmt -recursive

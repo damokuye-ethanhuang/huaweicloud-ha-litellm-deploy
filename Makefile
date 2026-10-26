@@ -9,7 +9,7 @@ OUT_DIR ?= out
 # Every target delegates to scripts/deploy.sh or a single-purpose script; the
 # Makefile is a convenience layer and must not re-implement any logic.
 .PHONY: help bootstrap creds creds-clear creds-check handoff handoff-clean init preflight plan apply-infra deploy-app remote-deploy verify \
-	smoke migrate mirror fmt validate lint destroy package-chart skill-install arch
+	smoke migrate mirror fmt validate lint destroy package-chart skill-install arch audit
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -74,6 +74,9 @@ mirror: ## Mirror the image into SWR (SWR_REGION, SWR_ORG required)
 
 fmt: ## terraform fmt -recursive
 	terraform fmt -recursive terraform
+
+audit: ## Pre-publication scan: credentials, PII, git history
+	./scripts/audit-secrets.py
 
 validate: ## Offline validation: modules, chart, monitoring assets, docs links, shell
 	./scripts/lint.sh
