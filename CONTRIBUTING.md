@@ -14,6 +14,11 @@ plan, state file or private key, on credential/PII patterns, and on anything
 still present in git history - a secret removed by `git rm` is still in the
 object database and still published by `git push`.
 
+Publish with `git archive` or a fresh clone, never a zip of the working
+directory: `.local/` holds the bastion private key, `out/` holds a rendered
+`app.env` with the master and salt keys, and `terraform.tfstate` holds every
+generated password. All three are gitignored, none of them are safe to ship.
+
 ```bash
 make bootstrap     # toolcheck
 make fmt           # terraform fmt -recursive
