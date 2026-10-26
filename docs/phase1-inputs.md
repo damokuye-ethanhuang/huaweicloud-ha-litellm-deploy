@@ -46,6 +46,41 @@ PROJECT_NAME=acme-litellm OWNER=platform-team \
 | `models.yaml` | 第 3 阶段才填，现在保持 `models: []` |
 | `$LITELLM_DEPLOY_HOME/secrets/hw.env` | `./scripts/creds.sh set` 写，不需要编辑 |
 
+## 不换区域（贵阳 `cn-southwest-2`）能不能直接跑通？
+
+**参数这一层可以。** 现在的默认值就是第一轮真实部署跑通的那一套：区域 `cn-southwest-2`、可用区
+`2d/2e/2f`、节点 `x1.8u.16g` 三副本、RDS/DCS 主备、`overlay_l2` 容器网络、Ingress 自建内网 ELB、
+无 NAT、KMS 加密、LTS/AOM 观测。你把这 4 个值填掉，第 1 阶段的参数就是完整的。
+
+但**参数之外还有 5 件事**必须成立，缺任何一件都会在很晚的阶段失败：
+
+| 前提 | 怎么确认 | 不满足时的症状 |
+|---|---|---|
+| AK/SK 有权限（VPC / CCE / RDS / DCS / ELB / EVS / EIP / SWR / KMS / LTS / AOM / SMN / IMS） | `./scripts/creds.sh status` 显示 configured；权限清单见 `docs/permissions.md` | `plan` 阶段 403，或 apply 到一半 `Unauthorized` |
+| SWR 组织已存在 | SWR 控制台 → 组织管理，确认组织名（`swr_org`）在列表里 | `mirror-image.sh` 推送失败（`unauthorized` / `not found`） |
+| 镜像已经镜像进 SWR | 堡垒机上 `./scripts/mirror-image.sh 1.106.3`，看到 `Image mirrored to swr.<region>.myhuaweicloud.com/<org>/litellm:1.106.3`（脚本推送后会校验 manifest，缺失即报错） | Pod `ImagePullBackOff`，事件里是 pull access denied |
+| 你的公网出口 IP 写对 | 你自己机器上 `curl -s ifconfig.me` | SSH **超时**，`deploy-app` / `verify` 全部做不了 |
+| 配额足够（EIP / ELB / RDS / DCS / ECS / EVS / ENI） | 控制台「资源配额」 | `apply` 中途 `QuotaExceeded`，已建的一半资源计费 |
+
+两件事会自动适配，不需要你改：
+
+- **CCE 版本**：`cce_cluster_version` 默认 `v1.36`，但部署时 `scripts/resolve-cce-version.py` 会用官方
+  SDK 查询本区域当前支持的版本再填入（CCE 会淘汰旧版本，写死会过期）。
+- **可用区**：`az_policy: auto` 会在部署前用 `scripts/resolve-az.py` 查询本区域真实可用的 AZ，
+  按 `az_preferred` 的顺序挑选。
+
+第一轮踩过的三个坑已经固化在代码里，重跑不会再遇到：
+
+| 坑 | 现状 |
+|---|---|
+| 数据盘 `SAS` 在该区域售罄 | 默认卷类型已改为 `GPSSD2`（`terraform/modules/cce/variables.tf`） |
+| ELB 删除保护导致 `destroy` 被 `ELB.8917` 挡住 | `elb_deletion_protection` 默认 `false` |
+| 销毁时 RDS 报「Other users are accessing the database」 | `scripts/destroy.sh` 现在先 `helm uninstall` 并等 Pod 消失，再 `terraform destroy`；没有 kubeconfig 时跳过并告警 |
+
+**唯一没在贵阳验证过的是第 3 阶段**（`models.yaml` + `./scripts/deploy.sh models`）。它是这次新拆出来
+的流程，第 1、2 阶段的代码路径没有变化；第一次 `--apply` 建议守在现场，看 Deployment 滚动完成、
+`/v1/models` 从 `[]` 变成你的模型列表。
+
 ## 为什么只有 4 个要填
 
 `deploy-inputs.yaml` 一共 55 个参数，其中 51 个已经填好了**第一轮真实部署验证过的值**（贵阳区域、

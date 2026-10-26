@@ -32,7 +32,38 @@ if grep -qE '^[[:space:]]*elb_mode[[:space:]]*=[[:space:]]*"ingress"' "$TF_DIR/t
   log "elb_mode = ingress: the ELB is owned by the Ingress and disappears with the cluster; nothing extra to delete here"
 fi
 
+# Terraform deletes RDS before it deletes the cluster, and a running pod pool
+# makes that fail with "DBS.1010155 Other users are accessing the database" -
+# after which the VPC is half gone and the cluster keeps billing. Uninstall the
+# release first so the connections are actually closed.
+uninstall_release() {
+  local kubeconfig="${KUBECONFIG:-$HOME/.kube/litellm-gateway.yaml}"
+  if [ ! -f "$kubeconfig" ]; then
+    log "no kubeconfig at $kubeconfig: skipping helm uninstall"
+    return 0
+  fi
+  if ! command -v helm >/dev/null 2>&1; then
+    warn "helm missing: skipping the release uninstall (RDS deletion may fail with DBS.1010155)"
+    return 0
+  fi
+  if ! KUBECONFIG="$kubeconfig" helm status litellm -n litellm >/dev/null 2>&1; then
+    log "no helm release 'litellm' in namespace litellm"
+    return 0
+  fi
+  log "helm uninstall litellm (closes the DB pools before RDS is deleted)"
+  KUBECONFIG="$kubeconfig" helm uninstall litellm -n litellm --wait --timeout 5m \
+    || warn "helm uninstall failed; continuing - destroy may hit DBS.1010155"
+  for _ in $(seq 1 24); do
+    if [ -z "$(KUBECONFIG="$kubeconfig" kubectl -n litellm get pods -o name 2>/dev/null)" ]; then
+      return 0
+    fi
+    sleep 5
+  done
+  warn "pods still present after 2 minutes; RDS deletion may fail"
+}
+
 log "terraform destroy ($TF_DIR)"
+uninstall_release
 terraform -chdir="$TF_DIR" destroy -input=false
 ok "destroyed"
 
