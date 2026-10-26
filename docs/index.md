@@ -23,7 +23,8 @@ script, a Terraform module or a document is missing from it.
 
 ```
 .
-├── deploy-inputs.yaml        ← the only file an operator edits
+├── deploy-inputs.yaml        ← phase 1-2 inputs (infrastructure + baseline)
+├── models.yaml               ← phase 3 input (models + fallbacks)
 ├── version-presets.yaml      ← the validated LiteLLM baseline
 ├── AGENTS.md                 ← what an automated agent may run (authority)
 ├── Makefile                  ← thin wrapper over scripts/deploy.sh
@@ -90,6 +91,7 @@ script, a Terraform module or a document is missing from it.
 | `scripts/draw-architecture-html.py` | Regenerates `docs/architecture.html` from the topology constants. |
 | `scripts/destroy.sh` | Destroys an example; requires `CONFIRM=yes` because it deletes the database and the salt key. |
 | `scripts/bootstrap.sh` | Toolchain check: prints the versions the repository expects and where they were found. |
+| `scripts/models-diff.py` | Phase 3: prints added / removed / changed models and fallback changes between the applied snapshot and `models.yaml`; flags a rename as breaking. Talks to nothing. |
 | `scripts/install-tools.sh` | Installs what `bootstrap.sh` reports as missing: terraform/helm/kubectl into `~/.local/bin` (no sudo), jq/curl/unzip/python3 via apt/dnf/brew. `--check` reports only, `DRY_RUN=1` prints commands. Refuses Git Bash and points at WSL2. |
 | `scripts/deploy-app.sh` | Compatibility shim; the application path lives in `deploy.sh`. Kept so old runbooks do not break. |
 | `scripts/lib.sh` | Shared helpers: logging, redaction, retries, kubeconfig handling. |
@@ -141,7 +143,7 @@ script, a Terraform module or a document is missing from it.
 | `docs/security.md` | Secrets, network, TLS, image verification, IAM, who may call the gateway. |
 | `docs/permissions.md` | Required IAM roles per stage, minimal custom policy, CCE agency caveat. |
 | `docs/sa-checklist.md` | Tick-box planning checklist: network, egress, data, encryption, go-live. |
-| `docs/inputs-guide.md` | How to fill each input, how to write the model array. |
+| `docs/inputs-guide.md` | How to fill each input; models live in `models.yaml` (phase 3). |
 | `docs/credentials.md` | How to hand over AK/SK the four ways, what lands on disk, the four ways it fails, and how to prove it is gone. |
 | `docs/manual-deployment.md` | Console click-through when Terraform is not allowed. |
 | `docs/upgrade-procedure.md` | What a version bump actually requires before `ACK_UPGRADE=1`. |

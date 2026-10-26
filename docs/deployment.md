@@ -462,6 +462,33 @@ Break-glass when a release failed after the Job was already garbage-collected:
 `LITELLM_SALT_KEY` is what makes stored provider credentials readable, so a
 database restored from backup must be paired with the salt from the same backup.
 
+## 5.2 Phase 3: models (separate from infrastructure)
+
+`deploy-app` finishes with an empty `model_list`, and that is the point: the
+gateway, its database, Redis, auth and UI are proven before any provider exists.
+`/v1/models` returning 200 with `[]` is the phase-2 exit criterion.
+
+Models and fallbacks are applied by their own stage, from `models.yaml`:
+
+```bash
+./scripts/deploy.sh models --check    # validate + diff against the applied snapshot
+./scripts/deploy.sh models --apply    # render, helm upgrade, snapshot
+./scripts/deploy.sh models --rollback # re-apply models.prev.yaml
+```
+
+`--check` talks to nothing, so it is safe to run on the operator's machine before
+the maintenance window. `--apply` needs cluster access: locally with kubeconfig,
+or `--remote models --apply` to run it through the bastion.
+
+Two settings keep the file authoritative. Both `store_model_in_db: false` (chart)
+and `STORE_MODEL_IN_DB=False` (env) are deliberate: with either true, a model
+added in the Admin UI lands in the database and the two lists diverge with no
+error message. The UI remains usable for keys and spend, but it is not a model
+source.
+
+A config change rolls the pods; `maxUnavailable: 0` and `preStop` keep in-flight
+streams alive, so a model change costs no failed requests at three replicas.
+
 ## 6. Stage: verify
 
 ```bash

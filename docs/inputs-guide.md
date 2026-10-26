@@ -81,23 +81,19 @@ deepseek-v4.1-flash | https://<modelarts-vpce-ip>/v1/ | | openai/deepseek-v4.1-f
 - 已有条目只追加不替换；
 - 所有条目互为 fallback。
 
-## 模型列表怎么写
+## 模型列表不在这个文件里
 
-`models` 是数组，可以写任意多组，每组字段：
+模型属于第 3 阶段，写在仓库根的 `models.yaml`，由独立阶段应用：
 
-```yaml
-models:
-  - name: glm-5.3                  # 对外模型名，客户端用这个调用
-    model: glm-5.3                 # 上游真实模型名（渲染时自动加 openai/ 前缀）
-    api_base: https://<vpce-ip>/v2/   # 留空则用 VPCEP 默认地址
-    api_key_env: GLM_API_KEY       # 密钥放哪个环境变量
-    mode: chat                     # chat | embedding | rerank | image_generation
-    max_tokens: 8192
-    rpm: null                      # 可选限速
-    tpm: null
+```bash
+./scripts/deploy.sh models --check   # 校验 + 看 diff，不动集群
+./scripts/deploy.sh models --apply   # 生效并滚动重启
+./scripts/deploy.sh models --rollback
 ```
 
-必填只有 `name`、`model`、`mode`；`api_base` 留空表示走 VPCEP 私网地址。
+`name` 是对外契约（客户端用 `"model": "glm-5.3"` 调用），发布后不要改名；换上游改
+`model` 或 `api_base`。`api_base` 不做私网硬校验——节点没有出网能力，公网地址调用时自然
+失败，preflight 只给 warning。字段说明和 fallback 写法见 `models.yaml` 里的注释。
 没有 `provider` 字段——所有模型都按 OpenAI 兼容协议调用。
 
 密钥**不写在这个文件里**，放在 `$LITELLM_DEPLOY_HOME/secrets/app.env`（已 gitignore），部署时合并进

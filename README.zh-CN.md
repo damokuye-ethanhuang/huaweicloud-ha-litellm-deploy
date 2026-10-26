@@ -59,6 +59,18 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 
 > 下文所有命令都在**仓库根目录**执行（提示符是 `.../huaweicloud-ha-litellm-deploy$`）。已经 `cd scripts` 进去了就用 `./creds.sh`，而不是 `creds.sh`——`.` 不在 PATH 里。
 
+### 三个阶段
+
+| 阶段 | 你要给的 | 命令 | 完成判据 |
+|---|---|---|---|
+| **1 参数** | `deploy-inputs.yaml`：`project_name` / `owner` / `region` / `bastion_ssh_cidrs` / `client_cidrs` | `preflight` → `plan` | 0 blocking，plan 摘要经你确认 |
+| **2 基线** | 无（模型不参与） | `apply-infra` → `deploy-app` → `verify` | readiness `db/redis connected`，`/v1/models` 返回 **200 + 空数组** |
+| **3 模型** | `models.yaml`：模型 + fallback | `models --check` → `models --apply` | 模型列表正确、一次真实 completion、fallback 双向生效 |
+
+模型单独成阶段的原因：它变更最频繁，而 `terraform apply` 不该为了加一个模型跑一遍。第 2
+阶段部署的是「没有任何上游也能跑通」的网关，这样 `/v1/models` 返回空数组才是控制面的
+真实信号，而不是被模型配置掩盖。
+
 ### 第 0 步：工具链（一分钟）
 
 ```bash
@@ -99,7 +111,7 @@ $EDITOR deploy-inputs.yaml      # 另一个需要改的文件
 证明真的通了；加 `--check` 只报告漂移、不做变更。`verify-ui` 则通过堡垒机抓
 `/ui/` 并用无头 Chrome 截图，让「已部署」有产物可查，而不是只看 Pod 数量。
 
-模型端点和 KEY 分开管理：端点写在 `deploy-inputs.yaml` 的 `models[]`，KEY 写在
+模型端点和 KEY 分开管理：端点写在第 3 阶段的 `models.yaml`，KEY 写在
 `$LITELLM_DEPLOY_HOME/secrets/app.env`（已 gitignore），YAML 里只用 `api_key_env` 引用变量名：
 
 ```bash
@@ -134,7 +146,6 @@ EOF
 | `owner` | `deploy-inputs.yaml` | 负责人，写进资源标签 |
 | `bastion_ssh_cidrs` | `deploy-inputs.yaml` | 允许 SSH 堡垒机的公网出口 IP（唯一接受公网段的地方），通常是执行部署的这台客户端的出口 IP |
 | `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | 谁可以**调用**网关 / 谁可以**访问 Admin UI** 的源网段，见下方说明 |
-| `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`；`api_base` 省略即走 ModelArts VPCEP |
 | `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `$LITELLM_DEPLOY_HOME/secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入；四种给法、报错对照、清理验证见 [`docs/credentials.md`](docs/credentials.md) |
 | 模型 KEY | `secrets/app.env` | 变量名与模型条目的 `api_key_env` 对应 |
 
@@ -164,7 +175,7 @@ preflight → plan → 人工确认 → apply-infra → deploy-app → verify �
   # 不填就沿用默认 10.0.3.0/24（只有运维子网，够自测）
   client_cidrs=["10.0.3.0/24"]
   admin_cidrs=["10.0.3.0/24"]
-  模型：glm-5.3 → openai/glm-5.3，api_base 省略（走 ModelArts VPCEP）
+  （模型不在这个提示词里：第 2 阶段跑完再单独配，见下方第 3 阶段）
 
 规则：
 1. 不要向我索要 AK/SK：我会自己执行 ./scripts/creds.sh set（隐藏输入，

@@ -333,45 +333,11 @@ access:
 #   max_tokens     最大输出 token
 #   rpm / tpm      该部署的限速（null 表示不单独限制）
 #
-# 下面的值是**占位默认值**，不是任何真实环境的数据。上线前必须替换：
-#   api_base  改成实际接入地址（ModelArts VPCEP 私网地址或模型服务地址）
-#   model     改成上游真实的模型 ID
-#   api_key   留空，把密钥写进 secrets/app.env（键名见 api_key_env）
-#             若该模型免认证（上游不校验 Key），api_key 留空即可；要显式免认证就把
-#             api_key_env 指向一个值为 dummy 的变量。
-#
-# fallback：两个预置模型互为回退（rollback），规则在 egress.fallback_pairs 里定义。
-models:
-- name: glm-5.3
-  model: openai/glm-5.3
-  api_base: https://<model-endpoint>/v1/
-  api_key_env: GLM_API_KEY
-  api_key: ''
-  mode: chat
-  max_tokens: 8192
-  rpm: null
-  tpm: null
-- name: deepseek-v4.1-flash
-  model: openai/deepseek-v4.1-flash
-  api_base: https://<model-endpoint>/v1/
-  api_key_env: DEEPSEEK_API_KEY
-  api_key: ''
-  mode: chat
-  max_tokens: 8192
-  rpm: null
-  tpm: null
-
-# 追加模型示例（取消注释后即生效）：
-#  - name: qwen-internal
-#    provider: openai-compatible
-#    model: qwen3-32b
-#    api_base: http://10.0.50.21:8000/v1
-#    api_key_env: QWEN_API_KEY
-#    api_key: ""
-#    mode: chat
-#    max_tokens: 4096
-#    rpm: 600
-#    tpm: 300000
+# 模型不再放在这里。模型属于第 3 阶段，独立文件 models.yaml：
+#   ./scripts/deploy.sh models --check     # 校验 + 看 diff，不动集群
+#   ./scripts/deploy.sh models --apply     # 生效并滚动重启
+# 本文件只描述基础设施与网关基线（镜像版本、副本、资源、网络、加密、观测）。
+# preflight 在这里不读任何模型信息，所以第 1/2 阶段可以在没有上游模型的情况下跑完。
 
 # -----------------------------------------------------------------------------
 # 出网方式 / Egress
@@ -432,22 +398,6 @@ egress:
     required_if: model_endpoint_mode=nat
     help: "NAT 出口带宽（Mbit/s），仅在 mode=nat 时生效。"
     map_to: terraform.nat_eip_bandwidth_size
-
-  - key: fallback_enabled
-    value: true
-    required: false
-    help: |
-      开启模型互为回退（rollback）。开启后 glm-5.3 与 deepseek-v4.1-flash
-      任一失败（429/5xx/超时）会自动切到另一个，路由与冷却时间由 LiteLLM 管理。
-    map_to: helm.fallbacks
-
-  - key: fallback_cooldown_seconds
-    value: 60
-    required_if: fallback_enabled=true
-    allowed_int_range: [5, 3600]
-    help: "失败模型进入冷却的秒数，冷却期内流量全部走备用模型。"
-    map_to: helm.allowedFailsCooldown
-
 
 # -----------------------------------------------------------------------------
 # 传输加密 / TLS

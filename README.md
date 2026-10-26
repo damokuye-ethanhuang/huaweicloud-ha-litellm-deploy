@@ -74,6 +74,19 @@ survive a pod or AZ failure.
 
 > Every command below runs from the **repository root**. If you have already `cd scripts`, call `./creds.sh`, not `creds.sh` - `.` is not on PATH.
 
+### Three phases
+
+| Phase | You provide | Command | Exit criterion |
+|---|---|---|---|
+| **1 params** | `deploy-inputs.yaml`: `project_name` / `owner` / `region` / `bastion_ssh_cidrs` / `client_cidrs` | `preflight` -> `plan` | 0 blocking, plan summary acknowledged |
+| **2 baseline** | nothing (no models) | `apply-infra` -> `deploy-app` -> `verify` | readiness `db/redis connected`, `/v1/models` returns **200 + an empty array** |
+| **3 models** | `models.yaml`: models + fallbacks | `models --check` -> `models --apply` | model list correct, one real completion, fallback works both ways |
+
+Models are a separate phase because they change most often and `terraform apply`
+should not run to add one. Phase 2 deploys a gateway that works with no upstream
+at all, which is what makes an empty `/v1/models` an honest signal about the
+control plane instead of a side effect of model config.
+
 ### Step 0: toolchain (one minute)
 
 ```bash
@@ -120,9 +133,9 @@ drift without touching anything. `verify-ui` fetches `/ui/` through the bastion
 and screenshots it with headless Chrome, so "it is deployed" is backed by an
 artifact rather than a pod count.
 
-Model endpoints and their keys are declared in `deploy-inputs.yaml`
-(`models[]`); the keys themselves live in `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored) and are
-referenced by `api_key_env`. A simple example:
+Model endpoints live in `models.yaml` (phase 3); the keys themselves live in
+`$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored) and are referenced by
+`api_key_env`. A simple example:
 
 ```bash
 cat > $LITELLM_DEPLOY_HOME/secrets/app.env <<'EOF'
@@ -159,7 +172,6 @@ carries no credentials. The repository holds code and `.example` templates only.
 | `owner` | `deploy-inputs.yaml` | goes into resource tags |
 | `bastion_ssh_cidrs` | `deploy-inputs.yaml` | public egress IPs allowed to SSH the bastion (the only place public ranges are accepted) - normally the machine running the deployment |
 | `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | who may **call** the gateway / who may **reach the Admin UI**; see below |
-| `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`; omit `api_base` for the ModelArts VPCEP path |
 | `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `$LITELLM_DEPLOY_HOME/secrets/hw.env` | written interactively by `./scripts/creds.sh set`; four ways, the error table and the cleanup proof in [`docs/credentials.md`](docs/credentials.md) |
 | model keys | `secrets/app.env` | variable names must match each model's `api_key_env` |
 
@@ -199,7 +211,7 @@ My parameters:
   # not networks to create; the default (ops subnet only) is enough to test
   client_cidrs=["10.0.3.0/24"]
   admin_cidrs=["10.0.3.0/24"]
-  models: glm-5.3 -> openai/glm-5.3, api_base omitted (ModelArts VPCEP)
+  (models are not in this prompt: they are phase 3, after the baseline is up)
 
 Rules:
 1. Never ask me for AK/SK: I run ./scripts/creds.sh set myself (hidden input,

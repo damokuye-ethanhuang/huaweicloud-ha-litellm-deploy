@@ -1,7 +1,7 @@
 ---
 name: litellm-huaweicloud-deploy
 description: "Use when deploying LiteLLM to Huawei Cloud (internal-only CCE gateway). Runs the staged flow and the bastion handoff."
-version: 1.0.2
+version: 1.1.0
 license: Apache-2.0
 metadata:
   hermes:
@@ -163,24 +163,37 @@ Never ask for AK/SK in chat. The operator picks one of four paths (detail in
 Verify with `./scripts/creds.sh status` (shows the source and a masked AK);
 never verify by printing the values.
 
-### Model list
+### Models are not an input (phase 3)
 
-`models:` is an array; any number of entries. Operators often paste a table;
-accept this shape and convert it:
+`deploy-inputs.yaml` describes infrastructure and the gateway baseline only.
+Preflight never reads a model list, so stages 1-2 complete with no provider at
+all - which is what makes "the control plane works" a testable statement.
+
+Models and fallbacks live in `models.yaml` and are applied by their own stage:
+
+```bash
+./scripts/deploy.sh models --check      # validate + diff against what is applied
+./scripts/deploy.sh models --apply      # render, roll the pods, snapshot
+./scripts/deploy.sh models --rollback   # re-apply the previous snapshot
+```
+
+Operators paste a table; convert it to this shape:
 
 ```
 glm-5.3 | https://<maas-vpce-ip>/v2/ | sk-xxx | openai/glm-5.3
 deepseek-v4.1-flash | https://<modelarts-vpce-ip>/v1/ | | openai/deepseek-v4.1-flash
 ```
 
-Column order: `name | api_base | api_key | model`. Rules:
+Column order: `name | api_base | api_key | model`.
 
-- `api_key` empty → the endpoint does not authenticate; still set `api_key_env`
-  and leave the variable unset. Never write a key into `deploy-inputs.yaml`.
-- Keys go to `$LITELLM_DEPLOY_HOME/secrets/app.env` (gitignored) as `KEY=VALUE`, referenced by
-  `api_key_env`.
-- Preserve existing entries; append, never replace.
-- All entries fall back to each other (`fallbacks.enabled: true`).
+- `name` is the tenant-facing contract (`"model": "glm-5.3"`). Never rename it
+  after go-live; change `model` or `api_base` instead. `--check` flags a rename.
+- `api_base` is not policed. Nodes have no egress, so a public URL simply fails
+  at call time; preflight only warns.
+- `api_key` empty means the endpoint does not authenticate: keep `api_key_env`
+  and leave that variable unset in `app.env`. Never write a key into a YAML file.
+- `fallbacks.enabled: true` with no explicit `pairs` means all-to-all among the
+  models. Past three models, list pairs explicitly.
 
 ## 3. Stage flow
 
@@ -195,12 +208,33 @@ Column order: `name | api_base | api_key | model`. Rules:
 ./scripts/deploy.sh --remote verify       # smoke on the bastion
 ./scripts/deploy.sh ingress              # converge Ingress (idempotent), prove VIP
 ./scripts/deploy.sh verify-ui            # /ui/ HTML + screenshot through the bastion
+./scripts/deploy.sh models --check       # phase 3: what would change
+./scripts/deploy.sh models --apply       # phase 3: models + fallbacks, rolling restart
+./scripts/deploy.sh models --rollback    # phase 3: undo the last model change
 ```
 
 `--remote all` does bundle + upload + deploy-app + verify in one go.
 
 Every stage is idempotent. `all` without `--remote` includes apply and must
 never run unattended.
+
+### Phase 3: models and fallbacks
+
+Phase 2 leaves the gateway running with `model_list: []`. `/v1/models` returning
+200 with an empty array is the phase-2 exit criterion: database, Redis, auth and
+the UI are proven before any provider is involved.
+
+`models.yaml` is the only model source. `store_model_in_db: false` and
+`STORE_MODEL_IN_DB=False` are deliberate: with either true, a model created in
+the Admin UI lands in the database and the two lists diverge silently - the
+drift the three-phase split exists to prevent. Do not flip them back.
+
+`--check` changes nothing and prints added / removed / changed entries plus
+fallback changes. `--apply` renders values, runs the same helm path as
+`deploy-app`, and snapshots to `$STATE_DIR/models.applied.yaml` (the previous
+becomes `models.prev.yaml`, which is what `--rollback` re-applies). A config
+change rolls the pods; `maxUnavailable: 0` plus `preStop` keep in-flight streams
+alive.
 
 ### Ingress: the three settings that decide whether it works
 
@@ -291,6 +325,9 @@ to re-run the Job when a release died after the hook was garbage-collected.
 - `LITELLM_SALT_KEY` is not rotatable once models exist (`prevent_destroy`).
 - Never widen a security group, add an EIP, or edit state to "make it work".
   Those are design changes requiring review.
+- Models come from `models.yaml` only. The Admin UI is not a model source
+  (`store_model_in_db: false`); a model visible there but missing from the file
+  means someone broke this rule.
 - Callers get tenant keys; the master key stays with ops.
 - Data tier stays HA: RDS `.ha` and `redis.ha.` — not single-node, not even in
   tests.

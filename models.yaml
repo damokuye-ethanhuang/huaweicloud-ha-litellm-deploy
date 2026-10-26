@@ -1,0 +1,42 @@
+# Phase 3 input: the model layer. Terraform never reads this file.
+#
+#   ./scripts/deploy.sh models --check      validate, show the diff, change nothing
+#   ./scripts/deploy.sh models --apply      render into the gateway, roll the pods
+#   ./scripts/deploy.sh models --rollback   re-apply the previous snapshot
+#
+# `name` is the contract tenants call (`"model": "glm-5.3"`). Changing `model`
+# underneath is fine at any time; renaming `name` breaks every existing client,
+# which is why --check flags it.
+#
+# `api_base` is not policed: the cluster has no egress unless a NAT gateway was
+# created, so a public URL simply fails at call time. Point it wherever your
+# endpoint is.
+version: 1
+
+# Start empty: phase 2 deploys a working gateway with no models, which is what
+# makes /v1/models an honest readiness signal for the control plane itself.
+models: []
+# models:
+#   - name: glm-5.3
+#     model: openai/glm-5.3
+#     mode: chat
+#     # api_base: https://<modelarts-vpce-ip>/v1/   # omit = ModelArts VPCEP default
+#     api_key_env: GLM_API_KEY
+#   - name: deepseek-v4.1-flash
+#     model: openai/deepseek-v4.1-flash
+#     mode: chat
+#     api_key_env: DEEPSEEK_API_KEY
+
+# Mutual rollback (429 / 5xx / timeout). Applied together with the models,
+# because a pair that references a model that does not exist is worse than no
+# fallback at all.
+#
+# `pairs: []` with `enabled: true` means every model falls back to every other -
+# sane for two or three models, noisy beyond that, where you should list the
+# pairs explicitly.
+fallbacks:
+  enabled: true
+  cooldown_seconds: 60
+  pairs: []
+  # pairs:
+  #   - [glm-5.3, deepseek-v4.1-flash]

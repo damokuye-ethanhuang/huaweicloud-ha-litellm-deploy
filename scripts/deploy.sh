@@ -10,6 +10,9 @@
 #   ./scripts/deploy.sh verify
 #   ./scripts/deploy.sh ingress         # converge the CCE ELB Ingress (immutable annotations)
 #   ./scripts/deploy.sh verify-ui       # HTML + screenshot proof through the bastion
+#   ./scripts/deploy.sh models --check  # phase 3: diff models.yaml against what is applied
+#   ./scripts/deploy.sh models --apply  # phase 3: render models + fallbacks, roll the pods
+#   ./scripts/deploy.sh models --rollback   # re-apply the previous snapshot
 #   ./scripts/deploy.sh all             # everything, apply included
 #
 # Remote execution (laptop outside the VPC: the cluster API and the ELB VIP are
@@ -33,9 +36,11 @@ ensure_runtime_dirs
 TF_DIR="$REPO/terraform/examples/cce-ha"
 REMOTE=0
 STAGE=""
+MODELS_ACTION="${MODELS_ACTION:---check}"
 for arg in "$@"; do
   case "$arg" in
     --remote) REMOTE=1 ;;
+    --check | --apply | --rollback) MODELS_ACTION="$arg" ;;
     -*) die "unknown flag: $arg" ;;
     *) STAGE="$arg" ;;
   esac
@@ -237,6 +242,53 @@ run_ingress() {
   "$REPO/scripts/ingress-apply.sh"
 }
 
+run_models() {
+  # Phase 3. Models and fallbacks live in models.yaml; nothing here touches
+  # Terraform, and phase 2 never reads this file.
+  require python3
+  local snapshot="$STATE_DIR/models.applied.yaml"
+  local previous="$STATE_DIR/models.prev.yaml"
+  local file="$REPO/models.yaml"
+
+  if [ "$MODELS_ACTION" = "--rollback" ]; then
+    [ -f "$previous" ] || die "no previous snapshot at $previous - nothing to roll back to"
+    cp "$previous" "$file"
+    ok "models.yaml restored from $previous"
+    MODELS_ACTION="--apply"
+  fi
+
+  [ -f "$file" ] || die "models.yaml is missing"
+
+  log "phase 3: validating models.yaml"
+  python3 "$REPO/scripts/preflight.py" --with-models --check-only --skip-network >/dev/null \
+    || die "models.yaml is invalid - run 'python3 scripts/preflight.py --with-models' to see why"
+
+  if [ "$MODELS_ACTION" = "--check" ]; then
+    python3 "$REPO/scripts/models-diff.py" --current "$snapshot" --next "$file"
+    printf '\n%s\n' "nothing has been changed. to apply: ./scripts/deploy.sh models --apply" >&2
+    return 0
+  fi
+
+  log "phase 3: rendering models + fallbacks into the gateway config"
+  python3 "$REPO/scripts/preflight.py" --with-models >/dev/null
+
+  if [ "${MODELS_DRY_RUN:-0}" = "1" ]; then
+    ok "dry run: rendered $OUT_DIR/helm-values.yaml, nothing sent to the cluster"
+    return 0
+  fi
+
+  if [ "$REMOTE" = "1" ]; then
+    "$REPO/scripts/remote-deploy.sh" deploy-app
+  else
+    run_app
+  fi
+
+  mkdir -p "$STATE_DIR"
+  [ -f "$snapshot" ] && cp "$snapshot" "$previous"
+  cp "$file" "$snapshot"
+  ok "applied; snapshot -> $snapshot (rollback: ./scripts/deploy.sh models --rollback)"
+}
+
 run_verify_ui() {
   # Operator-eye verification: the HTML and a rendered screenshot, fetched
   # through the bastion because nothing in this stack has a public endpoint.
@@ -271,6 +323,7 @@ run_bastion_key() {
 if [ "$REMOTE" = "1" ]; then
   # In-cluster stages cannot run here: hand the whole bundle to the bastion.
   case "$STAGE" in
+    models) run_models ;;
     deploy-app | verify | all) exec "$REPO/scripts/remote-deploy.sh" "$STAGE" ;;
     *) die "--remote only applies to deploy-app, verify and all (got '$STAGE')" ;;
   esac
@@ -286,6 +339,7 @@ case "$STAGE" in
   bastion-key) run_bastion_key ;;
   ingress) run_ingress ;;
   verify-ui) run_verify_ui ;;
+  models) run_models ;;
   all)
     run_plan
     run_apply
@@ -293,6 +347,6 @@ case "$STAGE" in
     run_verify
     ;;
   *)
-    die "unknown stage '$STAGE' (preflight|plan|apply-infra|apply-stream|deploy-app|verify|ingress|verify-ui|bastion-key|all)"
+    die "unknown stage '$STAGE' (preflight|plan|apply-infra|apply-stream|deploy-app|verify|ingress|verify-ui|bastion-key|models|all)"
     ;;
 esac
