@@ -54,8 +54,9 @@ export OUT_DIR="${OUT_DIR:-$LITELLM_DEPLOY_HOME/out}"
 export STATE_DIR="${STATE_DIR:-$LITELLM_DEPLOY_HOME/state}"
 
 ensure_runtime_dirs() {
-  mkdir -p "$SECRETS_DIR" "$STATE_DIR" "$OUT_DIR"
-  chmod 700 "$SECRETS_DIR" "$STATE_DIR" 2>/dev/null || true
+  mkdir -p "$LITELLM_DEPLOY_HOME" "$SECRETS_DIR" "$STATE_DIR" "$OUT_DIR"
+  # 700 throughout: `out/` holds a rendered app.env with the master and salt keys.
+  chmod 700 "$LITELLM_DEPLOY_HOME" "$SECRETS_DIR" "$STATE_DIR" "$OUT_DIR" 2>/dev/null || true
 }
 
 # Credentials live in exactly one place: secrets/hw.env, written by creds.sh.
