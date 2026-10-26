@@ -63,7 +63,7 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 
 | 阶段 | 你要给的 | 命令 | 完成判据 |
 |---|---|---|---|
-| **1 参数** | `deploy-inputs.yaml`：`project_name` / `owner` / `region` / `bastion_ssh_cidrs`（逐项说明见 [`docs/phase1-inputs.md`](docs/phase1-inputs.md)） | `preflight` → `plan` | 0 blocking，plan 摘要经你确认 |
+| **1 参数** | 运行 `./scripts/fill-inputs.sh` 回答 4 个问题（只改 `deploy-inputs.yaml` 这 4 行，逐项说明见 [`docs/phase1-inputs.md`](docs/phase1-inputs.md)） | `preflight` → `plan` | 0 blocking，plan 摘要经你确认 |
 | **2 基线** | 无（模型不参与） | `apply-infra` → `deploy-app` → `verify` | readiness `db/redis connected`，`/v1/models` 返回 **200 + 空数组** |
 | **3 模型** | `models.yaml`：模型 + fallback | `models --check` → `models --apply` | 模型列表正确、一次真实 completion、fallback 双向生效 |
 

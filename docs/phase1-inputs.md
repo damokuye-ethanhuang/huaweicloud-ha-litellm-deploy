@@ -3,6 +3,49 @@
 这一页只解决一件事：在开始建任何资源之前，把 `deploy-inputs.yaml` 里**确实需要你决定**的几个值填掉，
 确认 plan 没问题，再进入第 2 阶段。第 2 阶段部署基线网关，第 3 阶段才导模型。
 
+## 最短路径：一条命令，回答 4 个问题
+
+不用翻 55 行 YAML，也不用记参数名。在仓库根目录运行：
+
+```bash
+./scripts/fill-inputs.sh
+```
+
+它依次问 4 个问题（每个都先解释这个值是什么、填错会怎样），然后**只改
+`deploy-inputs.yaml` 这一个文件**、只改这 4 行，其余 51 个参数原样不动：
+
+```
+1/4 project_name       所有资源名的前缀
+2/4 owner              写进资源标签，账单和告警按它归属
+3/4 bastion_ssh_cidrs  允许 SSH 堡垒机的公网出口 IP
+4/4 swr_org            镜像推到哪个 SWR 组织（回车 = 跟 project_name 一致）
+```
+
+改完它会打印实际改动，并告诉你下一条命令。想先看当前值：
+
+```bash
+./scripts/fill-inputs.sh --show
+```
+
+非交互（CI 或让 agent 代跑）：
+
+```bash
+PROJECT_NAME=acme-litellm OWNER=platform-team \
+  BASTION_SSH_CIDRS=1.2.3.4/32 \
+  ./scripts/fill-inputs.sh --yes
+```
+
+校验不过会直接拒绝写入并指出哪一位不对（比如 CIDR 少了 `/32`），不会写半个文件。
+
+**只有这一个文件需要你改。** 下面这些都不是你手改的：
+
+| 文件 | 谁生成 |
+|---|---|
+| `terraform/examples/cce-ha/terraform.tfvars` | `preflight` 从 `deploy-inputs.yaml` 渲染，手改会被下次运行覆盖 |
+| `$LITELLM_DEPLOY_HOME/out/*`（helm-values、plan、preflight.json） | 同上，属于产物 |
+| `models.yaml` | 第 3 阶段才填，现在保持 `models: []` |
+| `$LITELLM_DEPLOY_HOME/secrets/hw.env` | `./scripts/creds.sh set` 写，不需要编辑 |
+
 ## 为什么只有 4 个要填
 
 `deploy-inputs.yaml` 一共 55 个参数，其中 51 个已经填好了**第一轮真实部署验证过的值**（贵阳区域、
@@ -129,9 +172,12 @@ python3 scripts/inputs-table.py --actionable
 - 渲染产物（terraform.tfvars、out/ 下的文件）由 preflight 生成，不要手改
 
 【这一步只做第 1 阶段：确认参数】
-1. 先跑 python3 scripts/inputs-table.py --actionable，把剩下的项逐条问我。
-   每条都要说清三件事：填什么格式、为什么需要它、不填或填错会怎样。不要自己编值。
-2. 我给了值之后，只修改 deploy-inputs.yaml 这一个文件，然后跑 ./scripts/deploy.sh preflight。
+1. 先跑 ./scripts/fill-inputs.sh --show 告诉我这四个值现在是什么，再跑
+   python3 scripts/inputs-table.py --actionable 确认没有别的缺项。
+   然后逐条问我这 4 个值，每条说清：填什么格式、为什么需要它、填错会怎样。不要自己编值。
+2. 我回答后运行 ./scripts/fill-inputs.sh（交互式）或我用 --yes 参数给你值。
+   这个脚本只改 deploy-inputs.yaml 里的 4 行，其它文件一律不动。
+   然后跑 ./scripts/deploy.sh preflight。
 3. 把 preflight 的 FAIL 逐条解释并给出修法；WARN 也要说明是否需要处理，直到 0 blocking。
 4. 只跑到 ./scripts/deploy.sh plan 就停下，用一段话汇报：将创建多少个资源、关键规格、
    预计费用、有没有会替换已有资源的破坏性变更。

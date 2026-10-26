@@ -91,6 +91,7 @@ script, a Terraform module or a document is missing from it.
 | `scripts/draw-architecture-html.py` | Regenerates `docs/architecture.html` from the topology constants. |
 | `scripts/destroy.sh` | Destroys an example; requires `CONFIRM=yes` because it deletes the database and the salt key. |
 | `scripts/bootstrap.sh` | Toolchain check: prints the versions the repository expects and where they were found. |
+| `scripts/fill-inputs.sh` | 第 1 阶段的填空题：只问 project_name / owner / bastion_ssh_cidrs / swr_org，校验后只改 `deploy-inputs.yaml` 这四行；`--show` 只看，`--yes` 非交互。 |
 | `scripts/models-diff.py` | Phase 3: prints added / removed / changed models and fallback changes between the applied snapshot and `models.yaml`; flags a rename as breaking. Talks to nothing. |
 | `scripts/install-tools.sh` | Installs what `bootstrap.sh` reports as missing: terraform/helm/kubectl into `~/.local/bin` (no sudo), jq/curl/unzip/python3 via apt/dnf/brew. `--check` reports only, `DRY_RUN=1` prints commands. Refuses Git Bash and points at WSL2. |
 | `scripts/deploy-app.sh` | Compatibility shim; the application path lives in `deploy.sh`. Kept so old runbooks do not break. |
