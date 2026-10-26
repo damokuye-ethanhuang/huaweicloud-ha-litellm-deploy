@@ -22,7 +22,7 @@
 
 | 参数 | 含义 | 常见填法 |
 |---|---|---|
-| `project_name` | 所有资源名的前缀 | `litellmtest01` |
+| `project_name` | 所有资源名的前缀 | `example-litellm` |
 | `owner` | 负责人/团队，写进标签 | `platform-team` |
 | `region` | 区域 | `cn-north-4` |
 | `vpc_cidr` | VPC 网段 | `10.0.0.0/22`（切 4 个 /24 + 1 个 /26；不能与数据中心、对端 VPC 重叠） |

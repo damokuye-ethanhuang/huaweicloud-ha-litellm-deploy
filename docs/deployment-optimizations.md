@@ -1,6 +1,6 @@
 # 部署方案优化点与踩坑记录
 
-> 来源：litellmtest01 首次真实部署（cn-southwest-2，2026-10-25）。
+> 来源：example-litellm 首次真实部署（cn-southwest-2，2026-10-25）。
 > 每条都是实际踩到的问题，不是预设的最优实践。整理进 `docs/deployment.md`
 > 与 `scripts/` 之后再删除本文件。
 

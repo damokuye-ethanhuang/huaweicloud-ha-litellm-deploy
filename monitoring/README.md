@@ -71,7 +71,7 @@ cat monitoring/alerting-rules.yaml
 需要替换成你的项目名：
 
 ```bash
-sed -i "s/\${PROJECT_NAME}/litellmtest01/" monitoring/alerting-rules.yaml
+sed -i "s/\${PROJECT_NAME}/example-litellm/" monitoring/alerting-rules.yaml
 ```
 
 规则按四组划分——**可用性 / 延迟 / 错误 / 饱和与依赖**。其中

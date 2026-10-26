@@ -7,7 +7,7 @@
 # fails in seconds with the specific cause.
 #
 # Run it on the host doing the push (the bastion), not on the operator PC:
-#   ./scripts/preflight-network.sh swr.cn-southwest-2.myhuaweicloud.com/litellmtest01/litellm:1.106.3
+#   ./scripts/preflight-network.sh swr.cn-southwest-2.myhuaweicloud.com/example-litellm/litellm:1.106.3
 #
 # Checks, in order (stop at the first failure):
 #   1 DNS      - the registry resolves, and to the internal 100.125.x service

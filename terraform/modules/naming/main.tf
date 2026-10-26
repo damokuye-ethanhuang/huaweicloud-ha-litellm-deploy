@@ -8,17 +8,17 @@ terraform {
 #
 #   {project_name}-{component}
 #
-# Example with project_name = "litellmtest01":
+# Example with project_name = "example-litellm":
 #
-#   litellmtest01-maas-vpc              VPC
-#   litellmtest01-maas-access-subnet    front-end subnet (ELB VIP, bastion)
-#   litellmtest01-maas-app-subnet       application subnet (CCE nodes)
-#   litellmtest01-maas-data-subnet      data subnet (RDS, DCS)
-#   litellmtest01-maas-sg-elb           security group for the internal load balancer
-#   litellmtest01-maas-cce              CCE cluster
-#   litellmtest01-maas-rds              RDS PostgreSQL
-#   litellmtest01-maas-elb              internal load balancer
-#   litellmtest01-litellm-master-key    CSMS secret
+#   example-litellm-maas-vpc              VPC
+#   example-litellm-maas-access-subnet    front-end subnet (ELB VIP, bastion)
+#   example-litellm-maas-app-subnet       application subnet (CCE nodes)
+#   example-litellm-maas-data-subnet      data subnet (RDS, DCS)
+#   example-litellm-maas-sg-elb           security group for the internal load balancer
+#   example-litellm-maas-cce              CCE cluster
+#   example-litellm-maas-rds              RDS PostgreSQL
+#   example-litellm-maas-elb              internal load balancer
+#   example-litellm-litellm-master-key    CSMS secret
 #
 # Rules
 #   - `project_name` is the only uniqueness anchor: two stacks in one account
@@ -33,12 +33,12 @@ terraform {
 #     service used here.
 
 variable "project_name" {
-  description = "Prefix for every resource name, for example litellmtest01. The only naming input."
+  description = "Prefix for every resource name, for example example-litellm. The only naming input."
   type        = string
 
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{2,23}$", var.project_name))
-    error_message = "project_name must be 3-24 chars, lowercase letters/digits/hyphens, starting with a letter (for example litellmtest01)."
+    error_message = "project_name must be 3-24 chars, lowercase letters/digits/hyphens, starting with a letter (for example example-litellm)."
   }
 }
 

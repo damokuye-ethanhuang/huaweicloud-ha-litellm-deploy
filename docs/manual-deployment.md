@@ -4,9 +4,9 @@
 上装 Terraform、需要理解每一步在做什么、或者要把流程交接给不熟悉 Git 的同事。
 
 > 参数全部来自 `deploy-inputs.yaml`。本文出现的 `{项目名}` 指该项的
-> `project_name`，例如 `litellmtest01`。资源命名规则：
-> **`{项目名}-{组件}`**，所以 VPC 叫 `litellmtest01-vpc`、CCE 叫
-> `litellmtest01-cce`，以此类推。
+> `project_name`，例如 `example-litellm`。资源命名规则：
+> **`{项目名}-{组件}`**，所以 VPC 叫 `example-litellm-vpc`、CCE 叫
+> `example-litellm-cce`，以此类推。
 
 ## 0. 前置条件
 

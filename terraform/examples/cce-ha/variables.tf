@@ -15,7 +15,7 @@ variable "site_type" {
 }
 
 variable "project_name" {
-  description = "Prefix for every resource name, for example litellmtest01."
+  description = "Prefix for every resource name, for example example-litellm."
   type        = string
 }
 

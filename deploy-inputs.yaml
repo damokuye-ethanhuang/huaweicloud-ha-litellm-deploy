@@ -38,8 +38,8 @@ project:
     required: true
     format: '^[a-z][a-z0-9-]{2,23}$'
     help: |
-      所有资源名的前缀，例如填 litellmtest01 会生成
-      litellmtest01-vpc / litellmtest01-cce / litellmtest01-rds ...
+      所有资源名的前缀，例如填 example-litellm 会生成
+      example-litellm-vpc / example-litellm-cce / example-litellm-rds ...
       小写字母开头，3-24 位，只含小写字母、数字、连字符。
       Prefix for every resource name. This is the uniqueness anchor.
     validate: name_fits
@@ -391,7 +391,7 @@ image_supply:
     map_to: terraform.image_supply_chain
 
   - key: swr_org
-    value: "litellmtest02"
+    value: "example-litellm"
     required_if: image_supply_chain=swr
     help: |
       SWR 组织（namespace）。镜像将被推到 swr.<region>.myhuaweicloud.com/<swr_org>/litellm。

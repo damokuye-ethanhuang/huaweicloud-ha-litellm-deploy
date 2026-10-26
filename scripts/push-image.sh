@@ -15,7 +15,7 @@
 # Usage:
 #   scripts/push-image.sh <src-ref> <dst-ref>
 #   scripts/push-image.sh ghcr.io/berriai/litellm:1.106.3 \
-#       swr.cn-southwest-2.myhuaweicloud.com/litellmtest01/litellm:1.106.3
+#       swr.cn-southwest-2.myhuaweicloud.com/example-litellm/litellm:1.106.3
 set -euo pipefail
 
 SRC="${1:-}"
