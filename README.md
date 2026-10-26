@@ -198,47 +198,67 @@ See [docs/security.md](docs/security.md) for the full checklist.
 
 ## Repository layout
 
-```
-terraform/
-  modules/        network, postgres, redis, cce, elb, observability, vpn, vpcep
-  examples/
-    cce-ha/       production: CCE + ELB + RDS + DCS
-    vm-single/    lab: one ECS with local PostgreSQL and Redis
-charts/litellm/   Helm chart (migration hook, PDB, probes, topology spread; config rendered)
-scripts/          deploy, migrate, smoke test, image mirroring, destroy
-docs/             architecture, deployment, operations, security, cost, regions, checklist
-monitoring/       AOM alert rules + Grafana dashboard + wiring guide
-skills/           Agent skill with the deployment flow (installed via `make skill-install`)
-```
+`docs/index.md` is the authoritative file map: what every script, module and
+document is for, and which document answers which question. The short version:
+
+| Path | Role |
+|---|---|
+| [`terraform/modules/`](terraform/modules) | 10 modules: `maas-network`, `bastion`, `cce`, `elb`, `postgres`, `redis`, `observability`, `vpcep`, `vpn`, `naming` |
+| [`terraform/examples/cce-ha/`](terraform/examples/cce-ha) | Production: CCE + RDS + DCS + Ingress-owned ELB |
+| [`terraform/examples/vm-single/`](terraform/examples/vm-single) | Lab: one ECS with local PostgreSQL and Redis |
+| [`charts/litellm/`](charts/litellm) | Helm chart (migration hook, PDB, probes, topology spread; config rendered) |
+| [`scripts/`](scripts) | Deployment engine: preflight/plan/apply, helm handoff, ingress convergence, image mirroring, destroy |
+| [`docs/`](docs) | Architecture, deployment, operations, security, cost, troubleshooting, file map |
+| [`monitoring/`](monitoring) | AOM alert rules + Grafana dashboard + wiring guide |
+| [`skills/`](skills) | Agent skill with the deployment flow (installed via `make skill-install`) |
+
+Full inventory: [docs/index.md](docs/index.md).
 
 ## Validation status
 
-Verified in this repository's build (no cloud credentials used):
+Two kinds of evidence, kept apart.
 
-- `terraform fmt -check` and `terraform validate` for all 8 modules and both
-  examples, against provider `huaweicloud/huaweicloud` **1.99.1**;
-- `helm lint` and `helm template` for the chart, including the migration hook;
-- `shellcheck` on every script;
-- the LiteLLM config boots against real PostgreSQL 16 and Redis 7 with image
-  `v1.106.3`: migrations applied (213), spend-log indexes built,
-  `/health/readiness` → `{"status":"healthy","db":"connected"}`,
-  `/v1/models` returns the configured models.
+**Verified offline** (no cloud credentials; `make validate`):
 
-Not verified here, and deliberately called out:
+- `terraform fmt -check` / `terraform validate` for all **10 modules and both
+  examples**, Terraform 1.17.0, provider `huaweicloud/huaweicloud` **1.99.1**;
+- `helm lint` / `helm template`, including the migration hook and the Ingress;
+- `shellcheck` on every script, plus docs links, README parity and the file map
+  in `docs/index.md`;
+- monitoring assets: every alarm metric exists in both the rules and the dashboard.
 
-- a live `terraform apply` against a Huawei Cloud account (the build environment
-  had no credentials and the project forbids testing in the intranet);
-- region-specific flavor codes outside `cn-north-4`;
-- the exact CCE Service annotation set on your CCE version — it is isolated in
-  `scripts/deploy-app.sh` and easy to adjust;
-- Cloud Eye metric names (alarms are opt-in for this reason).
+**Verified against a live account** — one end-to-end run in `cn-southwest-2`,
+then destroyed:
 
-The first `terraform plan` in your account is the real acceptance test.
+- staged apply (edge → data → compute → cache → ops) of the `cce-ha` example:
+  CCE with 3 workers spread across AZs, RDS PostgreSQL HA, DCS Redis HA;
+- schema migrations applied by the Helm pre-install hook — no manual SQL, no dump;
+- 3 gateway replicas answered `/health/readiness` and `/v1/models` through the
+  internal ELB that the CCE Ingress created;
+- `/ui/` returned the SPA and rendered in a headless browser reached through the
+  bastion;
+- with the NAT gateway closed the pods still served traffic, so no pod egress is
+  required once the image is mirrored into SWR;
+- `terraform destroy` returned the account to zero resources for this project
+  (`state list` empty, no EIP/ELB/RDS/DCS/CCE left).
+
+**Not verified here**, and deliberately called out:
+
+- regions other than `cn-southwest-2` (endpoint names, flavor codes, CCE minors);
+- the TLS path — the test ran an HTTP listener, no SCM certificate;
+- ModelArts / MaaS over VPCEP (the `vpcep` module); the test used
+  OpenAI-compatible endpoints;
+- AOM alarms firing (Cloud Eye metric names differ per region, so alarms ship
+  opt-in);
+- the `vm-single` lab example, and `--remote all` in a single invocation.
+
+The first `terraform plan` in your account is still the real acceptance test.
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
+| [docs/index.md](docs/index.md) | **Start here**: which document answers which question, and what every file in the repository is for |
 | [docs/architecture.md](docs/architecture.md) | Components, failure domains, request path, upgrade flow |
 | [docs/architecture.html](docs/architecture.html) | Rendered topology: subnets, request path, ELB ownership, known pitfalls (regenerate with `scripts/draw-architecture-html.py`) |
 | [docs/deployment.md](docs/deployment.md) | Prerequisites, IAM, credentials, step-by-step deploy |
@@ -255,7 +275,7 @@ The first `terraform plan` in your account is the real acceptance test.
 | [monitoring/grafana-dashboard.json](monitoring/grafana-dashboard.json) | Grafana dashboard for AOM's Prometheus endpoint |
 | [docs/cost.md](docs/cost.md) | Resource list, reference prices, cost levers |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Symptom → cause → fix |
-| [docs/deployment-optimizations.md](docs/deployment-optimizations.md) | Field notes from the first real deployment: 17 issues, symptom -> cause -> fix |
+| [docs/deployment-optimizations.md](docs/deployment-optimizations.md) | Field notes from real deployments: 22 issues, symptom -> cause -> fix |
 | [docs/modelarts-intranet.md](docs/modelarts-intranet.md) | Calling ModelArts over a VPC endpoint |
 | [docs/huaweicloud-regions.md](docs/huaweicloud-regions.md) | Regions, endpoints, AZ quirks, flavor codes |
 

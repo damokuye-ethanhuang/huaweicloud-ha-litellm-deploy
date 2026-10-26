@@ -147,41 +147,61 @@ terraform -chdir=terraform/examples/cce-ha output -json app_env | jq -r .LITELLM
 
 ## 目录结构
 
-```
-terraform/modules/   naming maas-network bastion cce elb postgres redis observability vpn vpcep
-terraform/examples/  cce-ha（生产） vm-single（单机实验）
-charts/litellm/      Helm chart（迁移 hook、PDB、探针、拓扑打散；config 由 values + 参数渲染）
-scripts/             部署、迁移、冒烟、镜像同步、销毁
-docs/                架构、部署、运维、安全、成本、排障、Region 对照
-monitoring/          AOM 告警规则 + Grafana 看板 + 接入说明
-skills/              agent skill（部署流程），`make skill-install` 安装
-```
+`docs/index.md` 是权威的文件地图：每个脚本、模块、文档负责什么，什么问题该看哪一篇。概览：
+
+| 路径 | 作用 |
+|---|---|
+| [`terraform/modules/`](terraform/modules) | 10 个模块：`maas-network`、`bastion`、`cce`、`elb`、`postgres`、`redis`、`observability`、`vpcep`、`vpn`、`naming` |
+| [`terraform/examples/cce-ha/`](terraform/examples/cce-ha) | 生产：CCE + RDS + DCS + 由 Ingress 自建的 ELB |
+| [`terraform/examples/vm-single/`](terraform/examples/vm-single) | 单机实验：一台 ECS + 本地 PostgreSQL / Redis |
+| [`charts/litellm/`](charts/litellm) | Helm chart（迁移 hook、PDB、探针、拓扑打散；config 由 values + 参数渲染） |
+| [`scripts/`](scripts) | 部署引擎：preflight/plan/apply、helm 交接、Ingress 收敛、镜像同步、销毁 |
+| [`docs/`](docs) | 架构、部署、运维、安全、成本、排障、文件地图 |
+| [`monitoring/`](monitoring) | AOM 告警规则 + Grafana 看板 + 接入说明 |
+| [`skills/`](skills) | agent skill（部署流程），`make skill-install` 安装 |
+
+完整清单见 [docs/index.md](docs/index.md)。
 
 ## 验证状态
 
-本仓库构建过程中已完成（未使用任何云凭据）：
+两类证据分开列。
 
-- 8 个模块 + 2 个示例的 `terraform fmt -check` / `terraform validate`，
-  provider 为 `huaweicloud/huaweicloud` **1.99.1**；
-- chart 的 `helm lint` / `helm template`，含迁移 hook；
-- 所有脚本通过 `shellcheck`；
-- LiteLLM 配置在真实 PostgreSQL 16 + Redis 7 + 镜像 `v1.106.3` 上启动成功：
-  213 条迁移、SpendLogs 索引构建完成、`/health/readiness` 返回
-  `{"status":"healthy","db":"connected"}`、`/v1/models` 返回配置中的模型。
+**离线验证**（不需要云凭据，`make validate`）：
 
-尚未验证、需要你首次上线时确认：
+- **10 个模块 + 2 个示例**的 `terraform fmt -check` / `terraform validate`，
+  Terraform 1.17.0，provider `huaweicloud/huaweicloud` **1.99.1**；
+- chart 的 `helm lint` / `helm template`，含迁移 hook 与 Ingress；
+- 所有脚本通过 `shellcheck`；文档链接、中英 README 链接一致性、
+  `docs/index.md` 文件地图完整性；
+- 监控资产：告警规则里的每个指标都能在看板中找到。
 
-- 真实华为云账号的 `terraform apply`（构建环境无凭据，且约束禁止在内网测试）；
-- `cn-north-4` 以外区域的规格编码；
-- 你的 CCE 版本对应的 Service 注解集合（集中在 `scripts/deploy-app.sh`）；
-- CES 指标名（因此告警默认关闭）。
+**真实账号验证**——在 `cn-southwest-2` 完整跑通一次，随后销毁：
 
-第一次 `terraform plan` 才是真正的验收。
+- `cce-ha` 示例按 edge → data → compute → cache → ops 分阶段 apply：CCE 3 节点
+  跨 AZ、RDS PostgreSQL 主备、DCS Redis 主备；
+- 表结构由 Helm pre-install hook 自动迁移，未手工执行 SQL、未导入 dump；
+- 3 个网关副本通过 CCE Ingress 自建的内网 ELB 正常响应
+  `/health/readiness` 与 `/v1/models`；
+- `/ui/` 返回 SPA，并经堡垒机用无头浏览器渲染成功；
+- 关闭 NAT 网关后 Pod 仍正常服务（镜像已入 SWR 时不需要 Pod 出公网）；
+- `terraform destroy` 后本工程在账号内资源归零（`state list` 为空，
+  EIP/ELB/RDS/DCS/CCE 均无残留）。
+
+**未验证**，明确标注：
+
+- `cn-southwest-2` 以外的区域（endpoint、规格编码、CCE 版本）；
+- TLS 路径——测试使用的是 HTTP 监听，未接 SCM 证书；
+- 经 VPCEP 访问 ModelArts / MaaS（`vpcep` 模块）——测试用的是 OpenAI 兼容端点；
+- AOM 告警实际触发（Cloud Eye 指标名因区域而异，告警默认不启用）；
+- `vm-single` 单机示例，以及 `--remote all` 一次跑完的路径。
+
+你账号里的第一次 `terraform plan` 仍然是真正的验收。
 
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
+| [docs/index.md](docs/index.md) | **先看这篇**：哪个问题看哪篇文档，以及仓库里每个文件的职责 |
 | [docs/architecture.md](docs/architecture.md) | 组件、故障域、请求链路、升级流程 |
 | [docs/architecture.html](docs/architecture.html) | 可视化架构：子网、请求链路、ELB 归属、坑位索引（由 `scripts/draw-architecture-html.py` 生成） |
 | [docs/deployment.md](docs/deployment.md) | 前置条件、IAM、凭据、逐步部署 |
@@ -198,7 +218,7 @@ skills/              agent skill（部署流程），`make skill-install` 安装
 | [skills/litellm-huaweicloud-deploy/SKILL.md](skills/litellm-huaweicloud-deploy/SKILL.md) | agent skill：阶段流程、堡垒机交接、故障路由 |
 | [docs/cost.md](docs/cost.md) | 资源清单、参考价格、降本手段 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 现象 → 原因 → 处理 |
-| [docs/deployment-optimizations.md](docs/deployment-optimizations.md) | 首次真实部署的 17 个坑位：现象、根因、修法 |
+| [docs/deployment-optimizations.md](docs/deployment-optimizations.md) | 真实部署的 22 个坑位：现象、根因、修法 |
 | [docs/modelarts-intranet.md](docs/modelarts-intranet.md) | 通过 VPCEP 私网调用 ModelArts |
 | [docs/huaweicloud-regions.md](docs/huaweicloud-regions.md) | Region、Endpoint、AZ 规律、规格编码 |
 

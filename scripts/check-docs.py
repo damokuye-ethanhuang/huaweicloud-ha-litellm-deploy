@@ -33,7 +33,7 @@ BANNED = {
     "scripts/preflight.sh": "use ./scripts/deploy.sh preflight",
     "scripts/deploy-infra.sh": "use ./scripts/deploy.sh",
     "scripts/bastion-exec.sh": "use ./scripts/remote-deploy.sh exec",
-    "maas-container-subnet": "container networking is vpc-router, no pod subnet",
+    "maas-container-subnet": "container networking is overlay_l2 (VXLAN); the pod CIDR is not a VPC subnet",
 }
 
 # Files allowed to mention removed concepts (history, this checker).
@@ -108,6 +108,30 @@ def check_banned(path: pathlib.Path, errors: list[str]) -> None:
             errors.append(f"{rel}: mentions removed {token!r} — {advice}")
 
 
+def check_inventory(errors: list[str]) -> None:
+    """Every script, module and document must be described in docs/index.md.
+
+    A file map is only useful while it is complete; without this check it rots
+    one commit after it is written (which is how 20 probe scripts ended up
+    undocumented at the repository root).
+    """
+    index = ROOT / "docs" / "index.md"
+    if not index.exists():
+        errors.append("docs/index.md is missing — it is the file map")
+        return
+    text = index.read_text(encoding="utf-8", errors="replace")
+
+    required: list[pathlib.Path] = [p for p in (ROOT / "scripts").iterdir() if p.is_file()]
+    required += [p for p in (ROOT / "terraform" / "modules").iterdir() if p.is_dir()]
+    required += [p for p in (ROOT / "docs").glob("*.md") if p.name != "index.md"]
+
+    for path in sorted(required):
+        name = path.name if path.is_dir() else path.relative_to(ROOT).as_posix()
+        if name not in text:
+            kind = "module" if path.is_dir() else "file"
+            errors.append(f"docs/index.md: {kind} {name} is not documented in the file map")
+
+
 def main() -> int:
     errors: list[str] = []
     files = tracked_markdown()
@@ -131,6 +155,8 @@ def main() -> int:
             errors.append(f"README.zh-CN.md: missing link to {target} (present in README.md)")
         for target in sorted(only_zh):
             errors.append(f"README.md: missing link to {target} (present in README.zh-CN.md)")
+
+    check_inventory(errors)
 
     for error in errors:
         print(f"[fail] {error}")

@@ -66,3 +66,6 @@ out/
 docs/*.finalize*.json
 docs/*.browser-check.json
 docs/*.delivery.json
+
+# --- ad-hoc probes (never commit investigation scratch) ---
+/tmp_*.py

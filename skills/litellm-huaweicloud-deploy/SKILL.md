@@ -1,7 +1,7 @@
 ---
 name: litellm-huaweicloud-deploy
 description: "Use when deploying LiteLLM to Huawei Cloud (internal-only CCE gateway). Runs the staged flow and the bastion handoff."
-version: 1.0.0
+version: 1.0.1
 license: Apache-2.0
 metadata:
   hermes:
@@ -78,9 +78,11 @@ and helm** — no Terraform, no cloud credentials.
 Read, in this order:
 
 1. `AGENTS.md` — what an agent may and may not do (authoritative).
-2. `deploy-inputs.yaml` — every parameter, with `help` text and validation.
-3. `version-presets.yaml` — the validated LiteLLM baseline.
-4. `docs/sa-checklist.md` — planning checklist; tick it before stage 1.
+2. `docs/index.md` — the file map: which document answers which question, and
+   what every script and module is for. Start here when the repo is unfamiliar.
+3. `deploy-inputs.yaml` — every parameter, with `help` text and validation.
+4. `version-presets.yaml` — the validated LiteLLM baseline.
+5. `docs/sa-checklist.md` — planning checklist; tick it before stage 1.
 
 ## 2. Collect inputs
 

@@ -8,6 +8,26 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `docs/index.md` - the authoritative file map: what every script, module and
+  document is for, and which document answers which question. Pointed at from
+  both READMEs and from the agent skill.
+- `scripts/check-docs.py` now fails when a script, a Terraform module or a
+  document is missing from `docs/index.md`, so the map cannot rot silently.
+
+### Removed
+
+- Twenty `tmp_probe_*.py` / `tmp_parse_bulletin.py` investigation scripts from
+  the repository root. Their findings live in `docs/deployment-optimizations.md`
+  and `scripts/resolve-cce-version.py`; `/tmp_*.py` is gitignored from now on.
+
+### Fixed
+
+- CI pinned Terraform 1.9.8 while `versions.tf` requires >= 1.17.0; the workflow
+  would have failed on every push. It now matches `.terraform-version`.
+- The README "Validation status" claimed no cloud credentials were ever used and
+  that a live apply was unverified. That stopped being true: it now separates
+  offline checks from the one end-to-end run in `cn-southwest-2` and from what is
+  still unverified (other regions, TLS, VPCEP models, alarm firing).
 - `scripts/apply-staged.sh` - applies the stack in dependency order (edge, data,
   compute, cache, ops) so the risky and slow pieces fail early and metered
   resources come last.
@@ -17,7 +37,7 @@ All notable changes to this project are documented here. The format follows
   manifest exists at the destination. A bare `docker push ... | tail` reports the
   exit status of `tail`, which once hid a rejected push.
 - `docs/deployment-optimizations.md` - the field notes from the first real
-  deployment: 17 issues, each with symptom, root cause and fix.
+  deployment: issues with symptom, root cause and fix (22 sections today).
 
 ### Changed
 
