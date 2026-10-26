@@ -57,6 +57,13 @@ helm/kubectl 和排障。Pod 无状态，需要跨故障保留的数据都在 RD
 
 ## 快速开始
 
+### 第 0 步：工具链（一分钟）
+
+```bash
+./scripts/install-tools.sh --check   # 缺什么
+./scripts/install-tools.sh           # 装上；Windows 请在 WSL2 里跑
+```
+
 ### 生产版（CCE 高可用）——受支持的路径
 
 ```bash
@@ -126,7 +133,7 @@ EOF
 | `bastion_ssh_cidrs` | `deploy-inputs.yaml` | 允许 SSH 堡垒机的公网出口 IP（唯一接受公网段的地方），通常是执行部署的这台客户端的出口 IP |
 | `client_cidrs` / `admin_cidrs` | `deploy-inputs.yaml` | 谁可以**调用**网关 / 谁可以**访问 Admin UI** 的源网段，见下方说明 |
 | `models[]` | `deploy-inputs.yaml` | `name` / `model` / `mode`；`api_base` 省略即走 ModelArts VPCEP |
-| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入 |
+| `HW_ACCESS_KEY` / `HW_SECRET_KEY` | `secrets/hw.env` | 由 `./scripts/creds.sh set` 交互写入，四种给法见 `secrets/README.md` |
 | 模型 KEY | `secrets/app.env` | 变量名与模型条目的 `api_key_env` 对应 |
 
 **`client_cidrs` / `admin_cidrs` 是什么，要不要动？**
@@ -178,6 +185,16 @@ preflight → plan → 人工确认 → apply-infra → deploy-app → verify �
 | Windows PowerShell | ❌ 不支持 | 入口脚本是 bash |
 
 部署本身跑在云上的 Linux（CCE 节点、堡垒机），和客户端装什么系统无关；限制只在你敲命令的这一侧。
+
+缺工具不用手工找：
+
+```bash
+./scripts/install-tools.sh --check    # 只检查，缺什么列什么
+./scripts/install-tools.sh            # 装 terraform 1.17 / helm 3.16 / kubectl 1.37 / jq / curl / unzip / python3
+DRY_RUN=1 ./scripts/install-tools.sh  # 只打印命令，不动系统
+```
+
+更省事的做法是把 agent 本身跑在一台云上 Linux 虚机里（Hermes on ECS 最便宜）：`apply-infra` 要连续跑 20–40 分钟，笔记本休眠、VPN 抖动、跨时区 SSH 断线都会变成“中途失败但看不出原因”。
 
 ### 单机版（vm-single，约 10 分钟）——仅评估
 

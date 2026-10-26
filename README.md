@@ -72,6 +72,13 @@ survive a pod or AZ failure.
 
 ## Quick start
 
+### Step 0: toolchain (one minute)
+
+```bash
+./scripts/install-tools.sh --check   # what is missing
+./scripts/install-tools.sh           # install it; on Windows, inside WSL2
+```
+
 ### Production tier (CCE, HA) — the supported path
 
 ```bash
@@ -216,6 +223,19 @@ Rules:
 
 The deployment itself runs on Linux in the cloud (CCE nodes, the bastion); the
 constraint is only on the machine you type commands on.
+
+The toolchain is installed by the repo, not by hand:
+
+```bash
+./scripts/install-tools.sh --check    # report what is missing
+./scripts/install-tools.sh            # terraform 1.17 / helm 3.16 / kubectl 1.37 / jq / curl / unzip / python3
+DRY_RUN=1 ./scripts/install-tools.sh  # print the commands, change nothing
+```
+
+Better still, run the agent itself on a Linux VM in the cloud (Hermes on a small
+ECS is the cheapest option): `apply-infra` runs for 20-40 minutes straight, and
+laptop sleep, VPN flaps or a dropped ssh session turn into a failure that looks
+like something else.
 
 ### Lab tier (single VM, ~10 minutes) — evaluation only
 

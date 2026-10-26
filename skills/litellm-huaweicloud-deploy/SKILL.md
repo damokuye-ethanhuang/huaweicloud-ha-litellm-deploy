@@ -1,7 +1,7 @@
 ---
 name: litellm-huaweicloud-deploy
 description: "Use when deploying LiteLLM to Huawei Cloud (internal-only CCE gateway). Runs the staged flow and the bastion handoff."
-version: 1.0.1
+version: 1.0.2
 license: Apache-2.0
 metadata:
   hermes:
@@ -74,9 +74,45 @@ automatic: it bundles rendered values, the chart, the Secret contents and the
 kubeconfig, uploads them, and runs helm there. The bastion needs **only kubectl
 and helm** — no Terraform, no cloud credentials.
 
-## 1. Orient (always)
+## 1. Environment, then orient
 
-Read, in this order:
+### 1.1 Step 0 - pick the host before running anything
+
+A wrong host shows up 20 minutes into `apply-infra`, so settle it first.
+
+| Host | Verdict |
+|---|---|
+| Linux VM, macOS | supported - the reference setup |
+| Windows + WSL2 (Ubuntu 22.04+) | supported - clone inside the WSL filesystem |
+| Windows + Git Bash | untested - path translation and a no-op `chmod` fail late |
+| Windows native (PowerShell, cmd) | unsupported - the entry points are bash |
+
+**Recommended: run the agent on a Linux VM in the cloud**, not a laptop. Hermes
+on a small ECS is the cheapest reliable option, and Claude Code, Codex CLI,
+Cursor or Gemini CLI are equally fine - the flow only needs a shell. The reasons
+are practical: `apply-infra` holds many API connections for 20-40 minutes,
+`deploy-app`/`verify` hop through the bastion over ssh, and
+`$LITELLM_DEPLOY_HOME` must survive the whole run. Laptop sleep, VPN flaps and
+CRLF checkouts all surface as confusing mid-apply failures.
+
+The repo installs its own toolchain, announced first (AGENTS.md forbids silent
+installs):
+
+```bash
+./scripts/install-tools.sh --check    # what is missing, exit 1 if anything is
+./scripts/install-tools.sh            # terraform 1.17, helm 3.16, kubectl 1.37, jq, curl, unzip, python3
+DRY_RUN=1 ./scripts/install-tools.sh  # print every command, change nothing
+```
+
+On Windows the order matters: `powershell -c "wsl --install -d Ubuntu"`,
+reboot, open Ubuntu, `git clone` **there**, then run the installer. Never clone
+on the Windows side and work from `/mnt/c` - `chmod 700` on the secrets
+directory is a no-op on DrvFs.
+
+An agent without a shell (chat-only UI) cannot run this flow; say so instead of
+starting.
+
+### 1.2 Read these, in this order
 
 1. `AGENTS.md` — what an agent may and may not do (authoritative).
 2. `docs/index.md` — the file map: which document answers which question, and
@@ -112,6 +148,21 @@ The four network fields, precisely:
 A public CIDR in `client_cidrs`/`admin_cidrs` is refused by design: an internal
 LB never sees a public source, so such a rule is false comfort.
 
+### Credentials
+
+Never ask for AK/SK in chat. The operator picks one of four paths (detail in
+`secrets/README.md`):
+
+1. `./scripts/creds.sh set` - hidden input, 0600 file. It refuses to run without
+   a TTY, so an agent cannot fill it in on their behalf.
+2. Export `HW_ACCESS_KEY` / `HW_SECRET_KEY` in the shell that runs the
+   deployment (for Hermes as a service: `~/.hermes/.env`, then restart).
+3. `./scripts/creds.sh set --from-env` after exporting - non-interactive.
+4. `~/.huaweicloud/credentials` when the SDK is already configured.
+
+Verify with `./scripts/creds.sh status` (shows the source and a masked AK);
+never verify by printing the values.
+
 ### Model list
 
 `models:` is an array; any number of entries. Operators often paste a table;
@@ -134,6 +185,7 @@ Column order: `name | api_base | api_key | model`. Rules:
 ## 3. Stage flow
 
 ```bash
+./scripts/install-tools.sh --check # 0. toolchain; installs on consent
 ./scripts/deploy.sh preflight      # validate + render out/
 ./scripts/deploy.sh plan           # save tfplan, change nothing
 #   ◄── MANDATORY: a human reads the plan before apply
