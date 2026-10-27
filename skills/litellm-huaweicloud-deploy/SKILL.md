@@ -1,7 +1,7 @@
 ---
 name: litellm-huaweicloud-deploy
-description: "Use when deploying LiteLLM to Huawei Cloud (internal-only CCE gateway). Runs the staged flow and the bastion handoff."
-version: 1.2.0
+description: "Use when deploying LiteLLM on Huawei Cloud (private CCE)."
+version: 1.2.1
 license: Apache-2.0
 metadata:
   hermes:

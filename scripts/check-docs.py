@@ -5,7 +5,10 @@ Two failure modes this catches, both of which have already happened in this repo
 
   1. a rename in code leaves prose pointing at something that no longer exists
      (`elb_public_ip`, `config/litellm-config.yaml`, `make sync-config`, ...);
-  2. a relative link points at a file or heading that was moved or deleted.
+  2. a relative link points at a file or heading that was moved or deleted;
+  3. a SKILL.md drifts out of the Agent Skills spec or past the 60-character
+     description that the Hermes skills index shows (a skill that is one
+     character over still looks fine in a browser, then loads truncated).
 
 Banned tokens are deliberate: every one of them was a real stale reference. Add
 a token here when you remove a concept, so it cannot come back.
@@ -17,7 +20,17 @@ import pathlib
 import re
 import sys
 
+import yaml
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+# Agent Skills spec (https://agentskills.io/specification) plus the Hermes cap.
+SKILL_NAME_MAX = 64
+SKILL_DESC_SPEC_MAX = 1024
+SKILL_DESC_HERMES_MAX = 60
+SKILL_BODY_LINE_WARN = 500
+SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 
 # Removed or renamed concepts. Prose must not mention them.
 BANNED = {
@@ -132,6 +145,88 @@ def check_inventory(errors: list[str]) -> None:
             errors.append(f"docs/index.md: {kind} {name} is not documented in the file map")
 
 
+def check_skills(errors: list[str]) -> int:
+    """Validate every SKILL.md against the Agent Skills spec and the Hermes cap.
+
+    A skill that is one character over a limit still renders fine on GitHub, but
+    the agent that loads it truncates the description or refuses the skill, and
+    neither failure is visible anywhere. Hence the mechanical check.
+    """
+    skills = sorted(
+        path
+        for path in (ROOT / "skills").rglob("SKILL.md")
+        if len(path.relative_to(ROOT).parts) <= 4
+    )
+    if not skills:
+        errors.append("skills/: no SKILL.md found (expected skills/<name>/SKILL.md)")
+        return 0
+
+    for path in skills:
+        rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8", errors="replace")
+
+        match = FRONTMATTER_RE.match(text)
+        if not match:
+            errors.append(f"{rel}: no YAML frontmatter (file must start with '---' on line 1)")
+            continue
+        try:
+            meta = yaml.safe_load(match.group(1))
+        except yaml.YAMLError as exc:
+            detail = str(exc).replace("\n", " ")
+            errors.append(f"{rel}: frontmatter is not valid YAML: {detail}")
+            continue
+        if not isinstance(meta, dict):
+            errors.append(f"{rel}: frontmatter must be a mapping")
+            continue
+
+        name = meta.get("name")
+        if not isinstance(name, str) or not name.strip():
+            errors.append(f"{rel}: missing required field 'name'")
+        else:
+            name = name.strip()
+            if len(name) > SKILL_NAME_MAX:
+                errors.append(f"{rel}: name is {len(name)} chars (max {SKILL_NAME_MAX})")
+            if not SKILL_NAME_RE.match(name):
+                errors.append(f"{rel}: name {name!r} is not lowercase-hyphen")
+            if name != path.parent.name:
+                errors.append(
+                    f"{rel}: name {name!r} must equal its directory {path.parent.name!r}"
+                )
+
+        description = meta.get("description")
+        if not isinstance(description, str) or not description.strip():
+            errors.append(f"{rel}: missing required field 'description'")
+        else:
+            description = description.strip()
+            if len(description) > SKILL_DESC_SPEC_MAX:
+                errors.append(
+                    f"{rel}: description is {len(description)} chars "
+                    f"(spec max {SKILL_DESC_SPEC_MAX})"
+                )
+            elif len(description) > SKILL_DESC_HERMES_MAX:
+                errors.append(
+                    f"{rel}: description is {len(description)} chars, over the "
+                    f"{SKILL_DESC_HERMES_MAX}-char Hermes index limit; "
+                    "keep the detail in the body"
+                )
+            if not description.startswith("Use when"):
+                errors.append(f"{rel}: description should start with 'Use when <trigger>. '")
+            if not description.endswith("."):
+                errors.append(f"{rel}: description should end with a period")
+
+        body = text[match.end():]
+        body_lines = body.count("\n") + (1 if body and not body.endswith("\n") else 0)
+        if not body.strip():
+            errors.append(f"{rel}: body is empty")
+        elif body_lines > SKILL_BODY_LINE_WARN:
+            errors.append(
+                f"{rel}: body is {body_lines} lines (recommended max {SKILL_BODY_LINE_WARN}); "
+                "move reference material into references/"
+            )
+
+    return len(skills)
+
+
 def main() -> int:
     errors: list[str] = []
     files = tracked_markdown()
@@ -162,12 +257,16 @@ def main() -> int:
             errors.append(f"README.md: missing link to {target} (present in README.zh-CN.md)")
 
     check_inventory(errors)
+    skill_count = check_skills(errors)
 
     for error in errors:
         print(f"[fail] {error}")
     if errors:
         return 1
-    print(f"docs ok: {len(files)} files, links resolve, no removed concepts")
+    print(
+        f"docs ok: {len(files)} files, {skill_count} skill(s), "
+        "links resolve, no removed concepts"
+    )
     return 0
 
 

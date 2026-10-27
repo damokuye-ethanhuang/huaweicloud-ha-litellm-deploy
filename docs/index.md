@@ -167,7 +167,7 @@ script, a Terraform module or a document is missing from it.
 | `secrets/README.md` | What belongs in `$LITELLM_DEPLOY_HOME/secrets/app.env` and `$LITELLM_DEPLOY_HOME/secrets/hw.env`, and what must never be committed. |
 | `secrets/app.env.example` | Template for provider API keys (`api_key_env` names, never the keys themselves). |
 | `secrets/hw.env.example` | Template for AK/SK; filled by `scripts/creds.sh set`, never by hand-editing. |
-| `skills/litellm-huaweicloud-deploy/SKILL.md` | Agent skill: the same flow, the decisions behind it, and failure routing. Installed with `make skill-install`. |
+| `skills/litellm-huaweicloud-deploy/SKILL.md` | Agent skill: the same flow, the decisions behind it, and failure routing. Installed with `make skill-install`. Directory name must equal the frontmatter `name`, and the description stays within the 60-char Hermes index limit — `scripts/check-docs.py` enforces both, so the file stays installable by `npx skills` and Hermes alike. |
 
 ## Generated, never committed
 
