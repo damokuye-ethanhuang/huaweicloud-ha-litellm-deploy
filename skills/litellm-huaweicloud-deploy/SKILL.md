@@ -1,6 +1,6 @@
 ---
 name: litellm-huaweicloud-deploy
-description: "Use when deploying LiteLLM on Huawei Cloud (private CCE)."
+description: "Use when deploying HA LiteLLM on Huawei Cloud (private CCE). Terraform builds a private VPC, three-worker CCE, RDS PostgreSQL HA and DCS Redis HA; Helm runs three replicas behind an internal ELB, then verify proves readiness."
 version: 1.2.1
 license: Apache-2.0
 metadata:

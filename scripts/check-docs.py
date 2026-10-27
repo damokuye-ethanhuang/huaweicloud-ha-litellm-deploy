@@ -24,13 +24,17 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# Agent Skills spec (https://agentskills.io/specification) plus the Hermes cap.
+# Agent Skills spec (https://agentskills.io/specification) plus this repo's
+# description shape: the first sentence carries the trigger inside 60 chars —
+# that is all a truncated index shows — and the whole field stays under 260.
 SKILL_NAME_MAX = 64
 SKILL_DESC_SPEC_MAX = 1024
-SKILL_DESC_HERMES_MAX = 60
+SKILL_DESC_HEAD_MAX = 60
+SKILL_DESC_TOTAL_MAX = 260
 SKILL_BODY_LINE_WARN = 500
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
+FIRST_SENTENCE_RE = re.compile(r"^(.+?\.)(?:\s|$)")
 
 # Removed or renamed concepts. Prose must not mention them.
 BANNED = {
@@ -203,16 +207,27 @@ def check_skills(errors: list[str]) -> int:
                     f"{rel}: description is {len(description)} chars "
                     f"(spec max {SKILL_DESC_SPEC_MAX})"
                 )
-            elif len(description) > SKILL_DESC_HERMES_MAX:
+            sentence = FIRST_SENTENCE_RE.match(description)
+            if not sentence:
                 errors.append(
-                    f"{rel}: description is {len(description)} chars, over the "
-                    f"{SKILL_DESC_HERMES_MAX}-char Hermes index limit; "
-                    "keep the detail in the body"
+                    f"{rel}: description must open with a complete sentence ending in '.'"
                 )
-            if not description.startswith("Use when"):
-                errors.append(f"{rel}: description should start with 'Use when <trigger>. '")
-            if not description.endswith("."):
-                errors.append(f"{rel}: description should end with a period")
+            else:
+                head = sentence.group(1)
+                if len(head) > SKILL_DESC_HEAD_MAX:
+                    errors.append(
+                        f"{rel}: first sentence is {len(head)} chars, must fit "
+                        f"{SKILL_DESC_HEAD_MAX} — a truncated index shows only that much"
+                    )
+                if not head.startswith("Use when"):
+                    errors.append(
+                        f"{rel}: first sentence should start with 'Use when <trigger>.'"
+                    )
+            if len(description) >= SKILL_DESC_TOTAL_MAX:
+                errors.append(
+                    f"{rel}: description is {len(description)} chars, must stay under "
+                    f"{SKILL_DESC_TOTAL_MAX} (60 for the trigger sentence, the rest detail)"
+                )
 
         body = text[match.end():]
         body_lines = body.count("\n") + (1 if body and not body.endswith("\n") else 0)
