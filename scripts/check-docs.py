@@ -31,6 +31,7 @@ SKILL_NAME_MAX = 64
 SKILL_DESC_SPEC_MAX = 1024
 SKILL_DESC_HEAD_MAX = 60
 SKILL_DESC_TOTAL_MAX = 260
+SKILL_COMPAT_MAX = 500
 SKILL_BODY_LINE_WARN = 500
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
@@ -227,6 +228,16 @@ def check_skills(errors: list[str]) -> int:
                 errors.append(
                     f"{rel}: description is {len(description)} chars, must stay under "
                     f"{SKILL_DESC_TOTAL_MAX} (60 for the trigger sentence, the rest detail)"
+                )
+
+        compatibility = meta.get("compatibility")
+        if compatibility is not None:
+            if not isinstance(compatibility, str) or not compatibility.strip():
+                errors.append(f"{rel}: compatibility must be a non-empty string when present")
+            elif len(compatibility) > SKILL_COMPAT_MAX:
+                errors.append(
+                    f"{rel}: compatibility is {len(compatibility)} chars "
+                    f"(spec max {SKILL_COMPAT_MAX})"
                 )
 
         body = text[match.end():]

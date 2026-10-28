@@ -1,8 +1,9 @@
 ---
 name: litellm-huaweicloud-deploy
 description: "Use when deploying HA LiteLLM on Huawei Cloud (private CCE). Terraform builds a private VPC, three-worker CCE, RDS PostgreSQL HA and DCS Redis HA; Helm runs three replicas behind an internal ELB, then verify proves readiness."
-version: 1.2.1
+version: 1.2.2
 license: Apache-2.0
+compatibility: "Needs the repository checkout: every command is repo-relative. Also Terraform 1.17+, Helm 3.16+, kubectl, python3, and Huawei Cloud credentials exported in the shell; only the bastion can reach the cluster and the internal ELB."
 metadata:
   hermes:
     tags: [litellm, huaweicloud, cce, terraform, helm, deployment, internal-only]
@@ -24,6 +25,10 @@ disagree, the repo wins — update this file.
 
 Repo: `huaweicloud-ha-litellm-deploy`. If it is not present, ask for the clone
 URL. Do not deploy from memory.
+
+Run every command below **from the repository root** — the paths are relative to
+it. Installing this skill copies only `SKILL.md`, so the checkout is what makes
+the commands exist.
 
 ---
 
