@@ -4,9 +4,9 @@
 Three layers, because each one misses what the others catch:
 
   1. forbidden paths - a saved plan, a state file, a private key, a kubeconfig
-     or secrets/*.env is a finding by name alone. `tfplan2` was committed once
-     with the generated database password inside; it is a zip archive, so no
-     content grep would ever have seen it. Never rely on content here.
+     or secrets/*.env is a finding by name alone. A plan archive is a zip
+     file, so no content grep will ever see what is inside one: match
+     forbidden paths by name, never by content.
   2. content patterns - AK/SK, `sk-` keys, private-key blocks, JWT, password
      assignments, public IPv4 outside the documentation ranges, account names,
      instance ids.
